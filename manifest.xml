@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Liminal FBD Sketcher — Excel task-pane add-in manifest.
+
+  Configured for: https://lbliminal.github.io/FBD_Sketcher/
+  (GitHub user LBLiminal, repo FBD_Sketcher). No edits needed — just make sure
+  taskpane.html, commands.html and the assets/ folder are published there via
+  GitHub Pages, then register this file in Excel (Trusted Add-in Catalog).
+  The <Id> GUID is unique to this build.
+-->
+<OfficeApp
+  xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+  xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
+  xsi:type="TaskPaneApp">
+
+  <Id>473ceece-f162-4e85-8264-f43a708233c2</Id>
+  <Version>1.0.0.0</Version>
+  <ProviderName>Liminal Engineering</ProviderName>
+  <DefaultLocale>en-NZ</DefaultLocale>
+  <DisplayName DefaultValue="FBD Sketcher"/>
+  <Description DefaultValue="Draw free body diagrams beside your calcs — insert the diagram into the worksheet and pull cell values in as labels."/>
+  <IconUrl DefaultValue="https://lbliminal.github.io/FBD_Sketcher/assets/icon-32.png"/>
+  <HighResolutionIconUrl DefaultValue="https://lbliminal.github.io/FBD_Sketcher/assets/icon-80.png"/>
+  <SupportUrl DefaultValue="https://liminalengineering.nz/"/>
+
+  <Hosts>
+    <Host Name="Workbook"/>
+  </Hosts>
+
+  <DefaultSettings>
+    <SourceLocation DefaultValue="https://lbliminal.github.io/FBD_Sketcher/taskpane.html"/>
+  </DefaultSettings>
+
+  <Permissions>ReadWriteDocument</Permissions>
+
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Hosts>
+      <Host xsi:type="Workbook">
+        <DesktopFormFactor>
+          <GetStarted>
+            <Title resid="Gs.Title"/>
+            <Description resid="Gs.Desc"/>
+            <LearnMoreUrl resid="Gs.Url"/>
+          </GetStarted>
+          <FunctionFile resid="Fn.Url"/>
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <OfficeTab id="TabHome">
+              <Group id="Liminal.Group">
+                <Label resid="Grp.Label"/>
+                <Icon>
+                  <bt:Image size="16" resid="Icon.16"/>
+                  <bt:Image size="32" resid="Icon.32"/>
+                  <bt:Image size="80" resid="Icon.80"/>
+                </Icon>
+                <Control xsi:type="Button" id="Liminal.OpenBtn">
+                  <Label resid="Btn.Label"/>
+                  <Supertip>
+                    <Title resid="Btn.Label"/>
+                    <Description resid="Btn.Tip"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Icon.16"/>
+                    <bt:Image size="32" resid="Icon.32"/>
+                    <bt:Image size="80" resid="Icon.80"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>Liminal.Taskpane</TaskpaneId>
+                    <SourceLocation resid="Taskpane.Url"/>
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+
+    <Resources>
+      <bt:Images>
+        <bt:Image id="Icon.16" DefaultValue="https://lbliminal.github.io/FBD_Sketcher/assets/icon-16.png"/>
+        <bt:Image id="Icon.32" DefaultValue="https://lbliminal.github.io/FBD_Sketcher/assets/icon-32.png"/>
+        <bt:Image id="Icon.80" DefaultValue="https://lbliminal.github.io/FBD_Sketcher/assets/icon-80.png"/>
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="Fn.Url" DefaultValue="https://lbliminal.github.io/FBD_Sketcher/commands.html"/>
+        <bt:Url id="Taskpane.Url" DefaultValue="https://lbliminal.github.io/FBD_Sketcher/taskpane.html"/>
+        <bt:Url id="Gs.Url" DefaultValue="https://liminalengineering.nz/"/>
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="Grp.Label" DefaultValue="FBD Sketcher"/>
+        <bt:String id="Btn.Label" DefaultValue="FBD Sketcher"/>
+        <bt:String id="Gs.Title" DefaultValue="FBD Sketcher is ready"/>
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="Btn.Tip" DefaultValue="Open the free body diagram sketcher in a side panel."/>
+        <bt:String id="Gs.Desc" DefaultValue="Click the FBD Sketcher button on the Home tab to open the drawing panel."/>
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp>
