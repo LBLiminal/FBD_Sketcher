@@ -101,6 +101,20 @@
   dialog td{padding:3px 10px 3px 0; color:var(--chrome-muted);}
   dialog td:first-child{color:var(--chrome-text); font-family:var(--font-mono); font-size:11px; letter-spacing:.04em; white-space:nowrap;}
   dialog button{margin-top:16px;}
+  /* ---- Engineer mode (opt-in) ---- */
+  .eng-only{display:none;}
+  body.eng span.eng-only{display:flex;}
+  #equilPanel{display:none; margin-top:14px; padding-top:10px; border-top:1px solid var(--chrome-line);
+              font-family:var(--font-mono); font-size:11px; letter-spacing:.03em; line-height:1.75;}
+  body.eng #equilPanel{display:block;}
+  #equilPanel h4{font-size:10px; text-transform:uppercase; letter-spacing:.18em; color:var(--chrome-muted); margin-bottom:6px;}
+  #equilPanel .eqrow{display:flex; justify-content:space-between; gap:8px;}
+  #equilPanel .eqrow span:last-child{color:var(--chrome-text);}
+  #equilPanel .eqv{margin-top:8px; padding:4px 6px; border-radius:4px; font-size:10px; text-transform:uppercase;
+                   letter-spacing:.12em; text-align:center;}
+  #equilPanel .ok{background:rgba(115,125,98,.28); color:#d3e2bd;}
+  #equilPanel .bad{background:rgba(207,154,140,.20); color:#e8bcae;}
+  #equilPanel .ref{color:var(--chrome-muted); font-size:9.5px; margin-top:4px;}
 </style>
 </head>
 <body class="t-charcoal">
@@ -132,15 +146,22 @@
   <span class="grp">
     <button id="btnSvg" title="Export vector SVG">Export SVG</button>
     <button id="btnPng" title="Export PNG (2×)">Export PNG</button>
+    <button id="btnCopyPng" title="Copy the diagram to the clipboard as a PNG">Copy PNG</button>
     <label class="chk"><input type="checkbox" id="chkExpBg" checked> incl. BG</label>
     <label class="chk" title="Export with a transparent background instead of white"><input type="checkbox" id="chkExpTransparent"> transparent</label>
-  </span>
-  <span class="grp">
-    <button id="btnHelp" title="Keyboard shortcuts">?</button>
   </span>
   <span class="grp" id="excelGroup" style="display:none">
     <button id="btnXlInsert" title="Render the diagram into the active worksheet at the selected cell">Insert to sheet</button>
     <button id="btnXlPull" title="Pull selected Excel cell values in as labels (or onto the selected element)">Pull cells</button>
+    <button id="btnXlStore" title="Save the diagram inside this workbook so it travels with the .xlsx">Save to book</button>
+  </span>
+  <span class="grp eng-only" id="engGrp" title="Drawing scale used by the equilibrium check">
+    <label class="chk">scale <input type="number" id="scalePpu" value="50" style="width:44px"> px = 1</label>
+    <input type="text" id="scaleUnit" value="m" style="width:30px" title="length unit name">
+  </span>
+  <span class="grp">
+    <label class="chk" title="Show magnitudes, drawing scale, snapping and the live equilibrium check"><input type="checkbox" id="chkEngineer"> engineer</label>
+    <button id="btnHelp" title="Keyboard shortcuts">?</button>
   </span>
 </header>
 
@@ -156,7 +177,9 @@
       </g>
     </svg>
   </div>
-  <aside id="props"><h3>Properties</h3><div id="propBody" class="empty">Nothing selected</div></aside>
+  <aside id="props"><h3>Properties</h3><div id="propBody" class="empty">Nothing selected</div>
+    <div id="equilPanel"></div>
+  </aside>
 </div>
 
 <footer><span class="hint" id="hint">Pick a tool, click (or drag) on the canvas. Paste an image any time to use it as a background.</span><span id="coords"></span></footer>
@@ -167,6 +190,7 @@
     <tr><td>V B F M U T</td><td>select · beam · force · moment · UDL · text</td></tr>
     <tr><td>Ctrl+V</td><td>paste image from clipboard as background</td></tr>
     <tr><td>Ctrl+Z / Ctrl+Y</td><td>undo / redo</td></tr>
+    <tr><td>Ctrl+D</td><td>duplicate selected element(s)</td></tr>
     <tr><td>Delete</td><td>remove selected element(s)</td></tr>
     <tr><td>Shift+click / drag</td><td>add to selection / box-select</td></tr>
     <tr><td>Arrow keys</td><td>nudge selected element(s)</td></tr>
@@ -209,9 +233,10 @@ const svg = $("svg"), worldG = $("world"), bgG = $("bglayer"),
 const GRID = 10;                 // snap grid, world units
 let zoom = 1, panX = 60, panY = 60;
 
-let state = { elements: [], bg: null };  // bg: {href,x,y,scale,opacity}
+let state = { elements: [], bg: null, scale: {ppu:50, unit:"m"} };  // bg:{href,x,y,scale,opacity}; scale: px per unit
 let selectedIds = new Set();             // multi-selection
 let tool = "select";
+let engineerMode = false;   // opt-in advanced features
 let counters = {};               // auto-label counters per prefix
 
 /* ---------- small helpers ---------- */
@@ -237,9 +262,9 @@ function uid(){ return "e" + Math.random().toString(36).slice(2, 9); }
 const FACTORIES = {
   beam:  (x,y) => ({type:"beam", x1:x, y1:y, x2:x, y2:y, w:5, color:"#222222"}),
   node:  (x,y) => ({type:"node", x, y, r:4, color:"#222222"}),
-  force: (x,y) => ({type:"force", x, y, angle:90, len:70, flip:false, resolve:false, label:nextLabel("F"), color:"#cc2222"}),
-  moment:(x,y) => ({type:"moment", x, y, r:26, ccw:true, label:nextLabel("M"), color:"#1155cc"}),
-  dist:  (x,y) => ({type:"dist", x1:x, y1:y, x2:x, y2:y, h1:40, h2:40, flip:false, label:nextLabel("w"), color:"#cc2222"}),
+  force: (x,y) => ({type:"force", x, y, angle:90, len:70, flip:false, resolve:false, mag:10, unit:"kN", label:nextLabel("F"), color:"#cc2222"}),
+  moment:(x,y) => ({type:"moment", x, y, r:26, ccw:true, mag:5, unit:"kN·m", label:nextLabel("M"), color:"#1155cc"}),
+  dist:  (x,y) => ({type:"dist", x1:x, y1:y, x2:x, y2:y, h1:40, h2:40, flip:false, mag1:5, mag2:5, unit:"kN/m", label:nextLabel("w"), color:"#cc2222"}),
   pin:   (x,y) => ({type:"pin", x, y, angle:0, s:22, color:"#222222"}),
   roller:(x,y) => ({type:"roller", x, y, angle:0, s:22, color:"#222222"}),
   fixed: (x,y) => ({type:"fixed", x, y, angle:0, s:26, color:"#222222"}),
@@ -259,6 +284,8 @@ const TOOLS = [
   ["pin","Pin",""], ["roller","Roller",""], ["fixed","Fixed",""], ["spring","Spring",""],
   ["sect","Annotate"],
   ["dim","Dimension",""], ["text","Text","T"],
+  ["sect","Templates"],
+  ["tmpl:ssb","Simple beam"], ["tmpl:cant","Cantilever"], ["tmpl:portal","Portal frame"],
 ];
 const HINTS = {
   select:"Click to select (Shift adds); drag on empty space for box-select; drag cocoa handles to reshape.",
@@ -301,11 +328,18 @@ function iconFor(name){
       continue;
     }
     const b = document.createElement("button");
-    b.dataset.tool = t[0];
-    b.appendChild(iconFor(t[0]));
-    b.appendChild(document.createTextNode(t[1]));
-    if (t[2]) b.title = "Shortcut: " + t[2];
-    b.onclick = () => setTool(t[0]);
+    if (t[0].startsWith("tmpl:")){
+      b.appendChild(iconFor("beam"));
+      b.appendChild(document.createTextNode(t[1]));
+      b.title = "Insert a " + t[1] + " template";
+      b.onclick = () => addTemplate(t[0].slice(5));
+    } else {
+      b.dataset.tool = t[0];
+      b.appendChild(iconFor(t[0]));
+      b.appendChild(document.createTextNode(t[1]));
+      if (t[2]) b.title = "Shortcut: " + t[2];
+      b.onclick = () => setTool(t[0]);
+    }
     pal.appendChild(b);
   }
 })();
@@ -555,8 +589,8 @@ function handlePoints(e){
   }
 }
 function applyHandle(e, name, wx, wy){
-  if (name === "p1"){ e.x1 = snap(wx); e.y1 = snap(wy); }
-  else if (name === "p2"){ e.x2 = snap(wx); e.y2 = snap(wy); }
+  if (name === "p1"){ const p = snapPoint(wx, wy, e.id); e.x1 = p[0]; e.y1 = p[1]; }
+  else if (name === "p2"){ const p = snapPoint(wx, wy, e.id); e.x2 = p[0]; e.y2 = p[1]; }
   else if (name === "vec"){
     const dx = wx - e.x, dy = wy - e.y;
     e.len = Math.max(15, Math.round(Math.hypot(dx, dy)));
@@ -637,12 +671,73 @@ function render(){
                 fill:"rgba(115,125,98,.12)", stroke:"#737d62", "stroke-width":1/zoom,
                 "stroke-dasharray":`${4/zoom} ${3/zoom}`}, overG);
   }
+  updateEquil();
 }
 function getSel(){
   if (selectedIds.size !== 1) return null;
   return state.elements.find(e => selectedIds.has(e.id)) || null;
 }
 function getSelAll(){ return state.elements.filter(e => selectedIds.has(e.id)); }
+
+/* ---------- engineer mode: snapping, scale, equilibrium ---------- */
+function snapGeom(wx, wy, excl){
+  if (!engineerMode) return null;
+  const thr = 10 / zoom; let best = null, bd = thr;
+  for (const e of state.elements){
+    if (e.id === excl) continue;
+    const pts = [];
+    if (e.x1 !== undefined) pts.push([e.x1, e.y1], [e.x2, e.y2]);
+    if (e.x !== undefined && e.y !== undefined) pts.push([e.x, e.y]);
+    for (const p of pts){ const d = Math.hypot(p[0]-wx, p[1]-wy); if (d < bd){ bd = d; best = p; } }
+  }
+  return best;
+}
+function snapPoint(wx, wy, excl){ const g = snapGeom(wx, wy, excl); return g ? [g[0], g[1]] : [snap(wx), snap(wy)]; }
+function syncScaleInputs(){
+  if ($("scalePpu")) $("scalePpu").value = state.scale.ppu;
+  if ($("scaleUnit")) $("scaleUnit").value = state.scale.unit;
+}
+function updateEquil(){
+  const panel = $("equilPanel"); if (!panel) return;
+  if (!engineerMode){ panel.innerHTML = ""; return; }
+  const ppu = (state.scale && state.scale.ppu) || 1;
+  const lenU = (state.scale && state.scale.unit) || "m";
+  const ref = state.elements.find(e => ["pin","roller","fixed","spring"].includes(e.type))
+           || state.elements.find(e => e.type === "node");
+  const RX = (ref ? ref.x : 0) / ppu, RY = -(ref ? ref.y : 0) / ppu;
+  const real = (x,y) => [x/ppu, -y/ppu];
+  let Fx=0, Fy=0, M=0, forceU="kN", any=false;
+  for (const e of state.elements){
+    if (e.type === "force" && e.mag){
+      any = true; if (e.unit) forceU = e.unit;
+      const a = rad(e.angle), fx = e.mag*Math.cos(a), fy = e.mag*Math.sin(a);
+      Fx += fx; Fy += fy;
+      const [px,py] = real(e.x, e.y);
+      M += (px-RX)*fy - (py-RY)*fx;
+    } else if (e.type === "moment" && e.mag){
+      any = true; M += (e.ccw ? 1 : -1) * e.mag;
+    } else if (e.type === "dist" && (e.mag1 || e.mag2)){
+      any = true;
+      const dx=e.x2-e.x1, dy=e.y2-e.y1, Lpx=Math.hypot(dx,dy); if (Lpx < 1) continue;
+      const ux=dx/Lpx, uy=dy/Lpx, s=e.flip?1:-1;
+      const Lr=Lpx/ppu, w1=e.mag1||0, w2=e.mag2||0, R=(w1+w2)/2*Lr;
+      const fx = R*uy*s, fy = R*ux*s;            // physical load direction * magnitude
+      Fx += fx; Fy += fy;
+      const denom=(w1+w2)||1, t=(w1+2*w2)/(3*denom);   // centroid fraction from end 1
+      const [px,py] = real(e.x1+dx*t, e.y1+dy*t);
+      M += (px-RX)*fy - (py-RY)*fx;
+    }
+  }
+  const f = n => (Math.abs(n) < 1e-9 ? 0 : n).toFixed(2);
+  const tol = 0.05, bal = any && Math.abs(Fx)<tol && Math.abs(Fy)<tol && Math.abs(M)<tol;
+  panel.innerHTML =
+    '<h4>Equilibrium</h4>' +
+    `<div class="eqrow"><span>&Sigma;Fx</span><span>${f(Fx)} ${forceU}</span></div>` +
+    `<div class="eqrow"><span>&Sigma;Fy</span><span>${f(Fy)} ${forceU}</span></div>` +
+    `<div class="eqrow"><span>&Sigma;M</span><span>${f(M)} ${forceU}\u00b7${lenU}</span></div>` +
+    (any ? `<div class="eqv ${bal?'ok':'bad'}">${bal?'Balanced':'Not balanced'}</div>` : '<div class="ref">enter magnitudes to check</div>') +
+    (any ? `<div class="ref">about ${ref ? (ref.type + (ref.label ? ' '+ref.label : '')) : 'origin'}</div>` : '');
+}
 
 /* ---------- history / persistence ---------- */
 let history = [], hIndex = -1;
@@ -666,6 +761,8 @@ function migrate(st){
 function restore(json){
   try { state = migrate(JSON.parse(json)); } catch(_){ return; }
   selectedIds = new Set();
+  if (!state.scale) state.scale = {ppu:50, unit:"m"};
+  syncScaleInputs();
   if (state.bg){
     $("bgOpacity").value = $("bgOpacityN").value = Math.round(state.bg.opacity * 100);
     $("bgScale").value = $("bgScaleN").value = Math.round(state.bg.scale * 100);
@@ -694,6 +791,11 @@ const PROP_SCHEMAS = {
   dim:   [["label","text","Label (blank = px length)"], ["off","number","Offset"], ["color","color","Colour"]],
   text:  [["text","text","Text"], ["size","number","Size"], ["color","color","Colour"]],
 };
+const ENG_SCHEMAS = {   // extra fields shown only in engineer mode
+  force:  [["mag","number","Magnitude"], ["unit","text","Unit"]],
+  moment: [["mag","number","Magnitude"], ["unit","text","Unit"]],
+  dist:   [["mag1","number","Intensity end 1"], ["mag2","number","Intensity end 2"], ["unit","text","Unit"]],
+};
 function renderProps(){
   const body = $("propBody");
   body.textContent = "";
@@ -716,14 +818,15 @@ function renderProps(){
   title.style.cssText = "font-weight:600;margin-bottom:8px;text-transform:capitalize";
   title.textContent = sel.type === "dist" ? "Distributed load" : sel.type;
   body.appendChild(title);
-  for (const [key, kind, lab] of PROP_SCHEMAS[sel.type]){
+  const addField = ([key, kind, lab]) => {
     const f = document.createElement("div"); f.className = "field";
     const l = document.createElement("label"); l.textContent = lab; f.appendChild(l);
     const inp = document.createElement("input");
-    if (kind === "checkbox"){ inp.type = "checkbox"; inp.checked = !!sel[key]; }
-    else if (kind === "color"){ inp.type = "color"; inp.value = sel[key]; }
-    else if (kind === "number"){ inp.type = "number"; inp.value = sel[key]; }
-    else { inp.type = "text"; inp.value = sel[key]; }
+    const val = sel[key];
+    if (kind === "checkbox"){ inp.type = "checkbox"; inp.checked = !!val; }
+    else if (kind === "color"){ inp.type = "color"; inp.value = val || "#000000"; }
+    else if (kind === "number"){ inp.type = "number"; inp.value = val != null ? val : 0; }
+    else { inp.type = "text"; inp.value = val != null ? val : ""; }
     inp.oninput = () => {
       const s = getSel(); if (!s) return;
       if (kind === "checkbox") s[key] = inp.checked;
@@ -733,7 +836,9 @@ function renderProps(){
     };
     inp.onchange = pushHistory;
     f.appendChild(inp); body.appendChild(f);
-  }
+  };
+  for (const spec of PROP_SCHEMAS[sel.type]) addField(spec);
+  if (engineerMode && ENG_SCHEMAS[sel.type]) for (const spec of ENG_SCHEMAS[sel.type]) addField(spec);
   const del = document.createElement("button");
   del.className = "del"; del.textContent = "Delete element";
   del.onclick = deleteSelected;
@@ -743,6 +848,52 @@ function deleteSelected(){
   if (!selectedIds.size) return;
   state.elements = state.elements.filter(e => !selectedIds.has(e.id));
   selectedIds = new Set();
+  pushHistory(); renderProps(); render();
+}
+function duplicateSel(){
+  const src = getSelAll(); if (!src.length) return;
+  const copies = src.map(e => {
+    const c = JSON.parse(JSON.stringify(e)); c.id = uid();
+    for (const k of ["x","x1","x2"]) if (c[k] !== undefined) c[k] += 20;
+    for (const k of ["y","y1","y2"]) if (c[k] !== undefined) c[k] += 20;
+    return c;
+  });
+  state.elements.push(...copies);
+  selectedIds = new Set(copies.map(c => c.id));
+  pushHistory(); renderProps(); render();
+}
+function viewCenter(){
+  const w = svg.clientWidth || 700, hh = svg.clientHeight || 400;
+  return [ Math.round((-panX + w/2)/zoom), Math.round((-panY + hh/2)/zoom) ];
+}
+function addTemplate(kind){
+  const [bx, by] = viewCenter();
+  const mk = (type, fn) => { const e = FACTORIES[type](0,0); fn(e); e.id = uid(); return e; };
+  let els = [];
+  if (kind === "ssb"){
+    els = [
+      mk("beam", e => { e.x1=bx-200; e.y1=by; e.x2=bx+200; e.y2=by; }),
+      mk("pin",  e => { e.x=bx-200; e.y=by; }),
+      mk("roller",e => { e.x=bx+200; e.y=by; }),
+    ];
+  } else if (kind === "cant"){
+    els = [
+      mk("beam",  e => { e.x1=bx-200; e.y1=by; e.x2=bx+200; e.y2=by; }),
+      mk("fixed", e => { e.x=bx-200; e.y=by; e.angle=0; }),
+    ];
+  } else if (kind === "portal"){
+    els = [
+      mk("beam", e => { e.x1=bx-200; e.y1=by;     e.x2=bx-200; e.y2=by-260; }),  // left column
+      mk("beam", e => { e.x1=bx+200; e.y1=by;     e.x2=bx+200; e.y2=by-260; }),  // right column
+      mk("beam", e => { e.x1=bx-200; e.y1=by-260; e.x2=bx+200; e.y2=by-260; }),  // rafter
+      mk("pin",  e => { e.x=bx-200; e.y=by; }),
+      mk("pin",  e => { e.x=bx+200; e.y=by; }),
+    ];
+  }
+  if (!els.length) return;
+  state.elements.push(...els);
+  selectedIds = new Set(els.map(e => e.id));
+  setTool("select");
   pushHistory(); renderProps(); render();
 }
 
@@ -801,7 +952,8 @@ svg.addEventListener("mousedown", ev => {
   // placement tools
   const make = FACTORIES[tool];
   if (!make) return;
-  const e = make(snap(w.x), snap(w.y));
+  const sp = snapPoint(w.x, w.y);
+  const e = make(sp[0], sp[1]);
   e.id = uid();
   state.elements.push(e);
   selectedIds = new Set([e.id]);
@@ -898,7 +1050,8 @@ window.addEventListener("keydown", ev => {
   if (ev.ctrlKey || ev.metaKey){
     if (ev.key === "z"){ ev.preventDefault(); undo(); return; }
     if (ev.key === "y"){ ev.preventDefault(); redo(); return; }
-    return; // let Ctrl+V paste fire the paste event
+    if (ev.key.toLowerCase() === "d"){ ev.preventDefault(); duplicateSel(); return; }
+    return; // let Ctrl+V paste fire the paste event (background image)
   }
   const keys = {v:"select", b:"beam", f:"force", m:"moment", u:"dist", t:"text"};
   if (keys[ev.key.toLowerCase()] && !ev.altKey){ setTool(keys[ev.key.toLowerCase()]); return; }
@@ -1049,6 +1202,27 @@ $("btnSvg").onclick = () => {
   const {out} = buildExportSvg();
   download("fbd.svg", new Blob([new XMLSerializer().serializeToString(out)], {type:"image/svg+xml"}));
 };
+function rasterise(scale, cb){
+  const {out, w, h} = buildExportSvg();
+  const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(out)], {type:"image/svg+xml"}));
+  const img = new Image(); let done = false;
+  const go = () => { if (done) return; done = true;
+    const c = document.createElement("canvas");
+    c.width = Math.round(w*scale); c.height = Math.round(h*scale);
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    c.toBlob(b => { URL.revokeObjectURL(url); cb(b); }, "image/png");
+  };
+  img.onload = go; img.src = url; if (img.decode) img.decode().then(go).catch(() => {});
+}
+$("btnCopyPng").onclick = () => {
+  if (!state.elements.length) { $("hint").textContent = "Nothing to export yet."; return; }
+  rasterise(2, async b => {
+    try {
+      await navigator.clipboard.write([new ClipboardItem({"image/png": b})]);
+      $("hint").textContent = "Diagram copied to clipboard — paste into Word, email, etc.";
+    } catch(err){ $("hint").textContent = "Clipboard blocked here — use Export PNG instead."; }
+  });
+};
 $("btnPng").onclick = () => {
   if (!state.elements.length) { $("hint").textContent = "Nothing to export yet."; return; }
   const {out, w, h} = buildExportSvg();
@@ -1069,6 +1243,15 @@ $("btnPng").onclick = () => {
 
 /* ---------- misc UI ---------- */
 $("chkGrid").onchange = render;
+$("chkEngineer").onchange = e => {
+  engineerMode = e.target.checked;
+  document.body.classList.toggle("eng", engineerMode);
+  try { localStorage.setItem("fbd-eng", engineerMode ? "1" : "0"); } catch(_){}
+  renderProps(); render();
+};
+$("scalePpu").oninput = e => { state.scale.ppu = parseFloat(e.target.value) || 1; render(); };
+$("scaleUnit").oninput = e => { state.scale.unit = e.target.value || "m"; render(); };
+$("scalePpu").onchange = $("scaleUnit").onchange = pushHistory;
 $("btnUndo").onclick = undo;
 $("btnRedo").onclick = redo;
 $("btnHelp").onclick = () => $("helpDlg").showModal();
@@ -1091,6 +1274,11 @@ window.addEventListener("resize", render);
     const d = FACTORIES.dim(80, 220);   d.x2 = 480; d.y2 = 220; d.off = 60; d.label = "L"; d.id = uid();
     state.elements = [b, p, r, u, f, d];
   }
+  if (!state.scale) state.scale = {ppu:50, unit:"m"};
+  try { engineerMode = localStorage.getItem("fbd-eng") === "1"; } catch(_){}
+  $("chkEngineer").checked = engineerMode;
+  document.body.classList.toggle("eng", engineerMode);
+  syncScaleInputs();
   pushHistory(); render();
 })();
 </script>
@@ -1110,7 +1298,13 @@ window.addEventListener("resize", render);
     if (grp) grp.style.display = "";
     document.getElementById("btnXlInsert").onclick = insertToSheet;
     document.getElementById("btnXlPull").onclick   = pullCells;
-    setStatus("Connected to Excel — draw your FBD, then Insert to sheet or Pull cells.");
+    document.getElementById("btnXlStore").onclick  = storeInBook;
+    // auto-load a diagram previously stored in this workbook
+    try {
+      const saved = Office.context.document.settings.get("fbd-diagram");
+      if (saved){ restore(saved); setStatus("Loaded the diagram stored in this workbook."); return; }
+    } catch(_){}
+    setStatus("Connected to Excel — draw, then Insert / Pull / Save to book.");
   });
 
   function pngBase64(scale){
@@ -1119,8 +1313,7 @@ window.addEventListener("resize", render);
     const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(built.out)],
                                              {type:"image/svg+xml"}));
     return new Promise((resolve, reject) => {
-      const img = new Image();
-      let done = false;
+      const img = new Image(); let done = false;
       const finish = () => {
         if (done) return; done = true;
         const c = document.createElement("canvas");
@@ -1143,9 +1336,8 @@ window.addEventListener("resize", render);
         const sheet = ctx.workbook.worksheets.getActiveWorksheet();
         const shape = sheet.shapes.addImage(png.b64);
         shape.name = "FBD_" + Date.now();
-        const maxW = 500, s = png.w > maxW ? maxW / png.w : 1;   // keep natural size, cap width
+        const maxW = 500, s = png.w > maxW ? maxW / png.w : 1;
         shape.width = png.w * s; shape.height = png.h * s;
-        // anchor at the selected cell's top-left (floating over the grid, not embedded in the cell)
         const sel = ctx.workbook.getSelectedRange();
         sel.load("left, top");
         await ctx.sync();
@@ -1182,6 +1374,18 @@ window.addEventListener("resize", render);
       pushHistory(); render();
       setStatus("Added " + vals.length + " label(s) from Excel — drag into place.");
     } catch(err){ setStatus("Pull failed: " + (err && err.message || err)); }
+  }
+
+  function storeInBook(){
+    try{
+      Office.context.document.settings.set("fbd-diagram", JSON.stringify(state));
+      Office.context.document.settings.saveAsync(res => {
+        if (res.status === Office.AsyncResultStatus.Succeeded)
+          setStatus("Diagram saved inside the workbook — it travels with the .xlsx. Save the workbook to keep it.");
+        else
+          setStatus("Save to workbook failed: " + (res.error && res.error.message || "unknown error"));
+      });
+    } catch(err){ setStatus("Save to workbook failed: " + (err && err.message || err)); }
   }
 })();
 </script>
