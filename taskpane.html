@@ -160,6 +160,7 @@
     <input type="text" id="scaleUnit" value="m" style="width:30px" title="length unit name">
     <label class="chk" title="Arrow size: pixels per unit of force. Increase to enlarge all arrows in proportion.">force <input type="number" id="forceScale" value="6" style="width:38px"> px</label>
     <label class="chk" title="Draw forces and loads to scale from their magnitudes"><input type="checkbox" id="chkToScale"> to-scale</label>
+    <label class="chk" title="Global size multiplier for all dimension text &amp; arrows">dim <input type="number" id="dimScale" value="1" step="0.25" style="width:40px"></label>
   </span>
   <span class="grp">
     <label class="chk" title="Show magnitudes, drawing scale, snapping and the live equilibrium check"><input type="checkbox" id="chkEngineer"> engineer</label>
@@ -235,7 +236,7 @@ const svg = $("svg"), worldG = $("world"), bgG = $("bglayer"),
 const GRID = 10;                 // snap grid, world units
 let zoom = 1, panX = 60, panY = 60;
 
-let state = { elements: [], bg: null, scale: {ppu:50, unit:"m"}, forceScale: 6 };  // forceScale: px per force unit
+let state = { elements: [], bg: null, scale: {ppu:50, unit:"m"}, forceScale: 6, dimScale: 1 };  // dimScale: dimension text/arrow size multiplier
 let selectedIds = new Set();             // multi-selection
 let tool = "select";
 let engineerMode = false;   // opt-in advanced features
@@ -272,7 +273,7 @@ const FACTORIES = {
   roller:(x,y) => ({type:"roller", x, y, angle:0, s:22, color:"#222222"}),
   fixed: (x,y) => ({type:"fixed", x, y, angle:0, s:26, color:"#222222"}),
   spring:(x,y) => ({type:"spring", x, y, angle:0, s:44, coils:4, color:"#222222"}),
-  dim:   (x,y) => ({type:"dim", x1:x, y1:y, x2:x, y2:y, off:30, label:"", color:"#444444"}),
+  dim:   (x,y) => ({type:"dim", x1:x, y1:y, x2:x, y2:y, off:30, scale:1, label:"", color:"#444444"}),
   text:  (x,y) => ({type:"text", x, y, text:"label", size:16, color:"#222222"}),
 };
 const TWO_POINT = new Set(["beam","dist","dim"]);
@@ -505,16 +506,18 @@ const RENDER = {
   dim(e, g){
     const dx = e.x2-e.x1, dy = e.y2-e.y1, L = Math.hypot(dx,dy) || 1;
     const px = -dy/L, py = dx/L, o = e.off;
+    const f = (state.dimScale || 1) * (e.scale || 1);       // text + arrowhead size factor
+    const ah = 11*f, aw = 3.5*f, ext = 5*f, lo = 12*f;      // arrow length/width, extension overshoot, label offset
     const a = [e.x1+px*o, e.y1+py*o], b = [e.x2+px*o, e.y2+py*o];
-    el("line", {x1:e.x1, y1:e.y1, x2:a[0]+px*5, y2:a[1]+py*5, stroke:e.color, "stroke-width":1.2}, g);
-    el("line", {x1:e.x2, y1:e.y2, x2:b[0]+px*5, y2:b[1]+py*5, stroke:e.color, "stroke-width":1.2}, g);
+    el("line", {x1:e.x1, y1:e.y1, x2:a[0]+px*ext, y2:a[1]+py*ext, stroke:e.color, "stroke-width":1.2}, g);
+    el("line", {x1:e.x2, y1:e.y2, x2:b[0]+px*ext, y2:b[1]+py*ext, stroke:e.color, "stroke-width":1.2}, g);
     el("line", {x1:a[0], y1:a[1], x2:b[0], y2:b[1], stroke:e.color, "stroke-width":1.2}, g);
     // inward arrowheads
     const ux = dx/L, uy = dy/L;
-    el("polygon", {points:`${a[0]},${a[1]} ${a[0]+ux*11+px*3.5},${a[1]+uy*11+py*3.5} ${a[0]+ux*11-px*3.5},${a[1]+uy*11-py*3.5}`, fill:e.color}, g);
-    el("polygon", {points:`${b[0]},${b[1]} ${b[0]-ux*11+px*3.5},${b[1]-uy*11+py*3.5} ${b[0]-ux*11-px*3.5},${b[1]-uy*11-py*3.5}`, fill:e.color}, g);
-    const mx = (a[0]+b[0])/2 + px*12, my = (a[1]+b[1])/2 + py*12;
-    drawLabel(g, mx, my + 4, e.label || (Math.round(L) + ""), e.color, 13);
+    el("polygon", {points:`${a[0]},${a[1]} ${a[0]+ux*ah+px*aw},${a[1]+uy*ah+py*aw} ${a[0]+ux*ah-px*aw},${a[1]+uy*ah-py*aw}`, fill:e.color}, g);
+    el("polygon", {points:`${b[0]},${b[1]} ${b[0]-ux*ah+px*aw},${b[1]-uy*ah+py*aw} ${b[0]-ux*ah-px*aw},${b[1]-uy*ah-py*aw}`, fill:e.color}, g);
+    const mx = (a[0]+b[0])/2 + px*lo, my = (a[1]+b[1])/2 + py*lo;
+    drawLabel(g, mx, my + 4*f, e.label || (Math.round(L) + ""), e.color, 13*f);
   },
   text(e, g){
     el("text", {x:e.x, y:e.y, fill:e.color, "font-size":e.size, "font-family":"Georgia,serif",
@@ -739,6 +742,7 @@ function syncScaleInputs(){
   if ($("scalePpu")) $("scalePpu").value = state.scale.ppu;
   if ($("scaleUnit")) $("scaleUnit").value = state.scale.unit;
   if ($("forceScale")) $("forceScale").value = state.forceScale != null ? state.forceScale : 6;
+  if ($("dimScale")) $("dimScale").value = state.dimScale != null ? state.dimScale : 1;
 }
 function addLengthField(sel, body){
   const ppu = (state.scale && state.scale.ppu) || 1, unit = (state.scale && state.scale.unit) || "m";
@@ -825,6 +829,7 @@ function restore(json){
   selectedIds = new Set();
   if (!state.scale) state.scale = {ppu:50, unit:"m"};
   if (state.forceScale == null) state.forceScale = 6;
+  if (state.dimScale == null) state.dimScale = 1;
   syncScaleInputs();
   if (state.bg){
     $("bgOpacity").value = $("bgOpacityN").value = Math.round(state.bg.opacity * 100);
@@ -851,7 +856,7 @@ const PROP_SCHEMAS = {
   fixed: [["angle","number","Angle °"], ["s","number","Size"], ["color","color","Colour"]],
   spring:[["angle","number","Angle °"], ["s","number","Length"], ["coils","number","Coils"],
           ["color","color","Colour"]],
-  dim:   [["label","text","Label (blank = px length)"], ["off","number","Offset"], ["color","color","Colour"]],
+  dim:   [["label","text","Label (blank = px length)"], ["off","number","Offset"], ["scale","number","Scale"], ["color","color","Colour"]],
   text:  [["text","text","Text"], ["size","number","Size"], ["color","color","Colour"]],
 };
 const ENG_SCHEMAS = {   // extra fields shown only in engineer mode
@@ -1319,6 +1324,8 @@ $("scalePpu").onchange = $("scaleUnit").onchange = pushHistory;
 $("forceScale").oninput = e => { state.forceScale = parseFloat(e.target.value) || 1; render(); };
 $("forceScale").onchange = pushHistory;
 $("chkToScale").onchange = e => { toScale = e.target.checked; try { localStorage.setItem("fbd-toscale", toScale?"1":"0"); } catch(_){}; render(); };
+$("dimScale").oninput = e => { state.dimScale = parseFloat(e.target.value) || 1; render(); };
+$("dimScale").onchange = pushHistory;
 $("btnUndo").onclick = undo;
 $("btnRedo").onclick = redo;
 $("btnHelp").onclick = () => $("helpDlg").showModal();
@@ -1343,6 +1350,7 @@ window.addEventListener("resize", render);
   }
   if (!state.scale) state.scale = {ppu:50, unit:"m"};
   if (state.forceScale == null) state.forceScale = 6;
+  if (state.dimScale == null) state.dimScale = 1;
   try { engineerMode = localStorage.getItem("fbd-eng") === "1"; } catch(_){}
   try { toScale = localStorage.getItem("fbd-toscale") === "1"; } catch(_){}
   $("chkEngineer").checked = engineerMode;
