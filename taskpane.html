@@ -139,7 +139,7 @@
     <button id="btnHelp" title="Keyboard shortcuts">?</button>
   </span>
   <span class="grp" id="excelGroup" style="display:none">
-    <button id="btnXlInsert" title="Render the diagram into the active worksheet as an image">Insert to sheet</button>
+    <button id="btnXlInsert" title="Render the diagram into the active worksheet at the selected cell">Insert to sheet</button>
     <button id="btnXlPull" title="Pull selected Excel cell values in as labels (or onto the selected element)">Pull cells</button>
   </span>
 </header>
@@ -176,6 +176,15 @@
   </table>
   <p style="margin-top:12px;color:var(--chrome-muted);line-height:1.55">Point tools: single click to place. Beams, loads &amp; dimensions: drag, or click-move-click. Drag the cocoa handles to edit geometry. Diagrams autosave to this browser; use Save for a portable .json.</p>
   <button onclick="this.closest('dialog').close()">Close</button>
+</dialog>
+
+<dialog id="confirmDlg">
+  <h2 id="confirmMsg">Clear the canvas?</h2>
+  <p style="color:var(--chrome-muted);margin-bottom:2px">This removes everything on the canvas. You can still undo with Ctrl+Z.</p>
+  <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+    <button id="confirmNo">Cancel</button>
+    <button id="confirmYes">Clear</button>
+  </div>
 </dialog>
 
 <input type="file" id="fileJson" accept=".json,application/json" hidden>
@@ -230,8 +239,7 @@ const FACTORIES = {
   node:  (x,y) => ({type:"node", x, y, r:4, color:"#222222"}),
   force: (x,y) => ({type:"force", x, y, angle:90, len:70, flip:false, label:nextLabel("F"), color:"#cc2222"}),
   moment:(x,y) => ({type:"moment", x, y, r:26, ccw:true, label:nextLabel("M"), color:"#1155cc"}),
-  udl:   (x,y) => ({type:"udl", x1:x, y1:y, x2:x, y2:y, h:40, flip:false, label:nextLabel("w"), color:"#cc2222"}),
-  tri:   (x,y) => ({type:"tri", x1:x, y1:y, x2:x, y2:y, h:45, flip:false, rev:false, label:nextLabel("w"), color:"#cc2222"}),
+  dist:  (x,y) => ({type:"dist", x1:x, y1:y, x2:x, y2:y, h1:40, h2:40, flip:false, label:nextLabel("w"), color:"#cc2222"}),
   pin:   (x,y) => ({type:"pin", x, y, angle:0, s:22, color:"#222222"}),
   roller:(x,y) => ({type:"roller", x, y, angle:0, s:22, color:"#222222"}),
   fixed: (x,y) => ({type:"fixed", x, y, angle:0, s:26, color:"#222222"}),
@@ -239,14 +247,14 @@ const FACTORIES = {
   dim:   (x,y) => ({type:"dim", x1:x, y1:y, x2:x, y2:y, off:30, label:"", color:"#444444"}),
   text:  (x,y) => ({type:"text", x, y, text:"label", size:16, color:"#222222"}),
 };
-const TWO_POINT = new Set(["beam","udl","tri","dim"]);
+const TWO_POINT = new Set(["beam","dist","dim"]);
 
 /* ---------- palette ---------- */
 const TOOLS = [
   ["sect","Tools"],
   ["select","Select","V"], ["beam","Beam","B"], ["node","Node",""],
   ["sect","Loads"],
-  ["force","Force","F"], ["moment","Moment","M"], ["udl","UDL","U"], ["tri","Tri load",""],
+  ["force","Force","F"], ["moment","Moment","M"], ["dist","UDL","U"],
   ["sect","Supports"],
   ["pin","Pin",""], ["roller","Roller",""], ["fixed","Fixed",""], ["spring","Spring",""],
   ["sect","Annotate"],
@@ -257,8 +265,7 @@ const HINTS = {
   beam:"Drag — or click, move, click — to draw a beam.", node:"Click to place a node.",
   force:"Click to place a force arrow (tip at click point). Rotate via handle or properties.",
   moment:"Click to place a moment. Toggle CW/CCW in properties.",
-  udl:"Drag — or click, move, click — along the loaded edge.",
-  tri:"Drag — or click, move, click — along the loaded edge.",
+  dist:"Drag — or click, move, click — along the loaded edge. Set End 1 / End 2 heights for UDL, trapezoid or triangle.",
   pin:"Click to place a pin support.", roller:"Click to place a roller support.",
   fixed:"Click to place a fixed support (rotate in properties).",
   spring:"Click to place a spring support (rotate / coils in properties).",
@@ -276,8 +283,7 @@ function iconFor(name){
     case "node":   el("circle",{cx:11,cy:9,r:3,fill:"currentColor",stroke:"none"},g); break;
     case "force":  P("M11 2 L11 12"); P("M7 10 L11 16 L15 10", {fill:"currentColor",stroke:"none"}); break;
     case "moment": P("M16 5 A7 7 0 1 1 15 13"); P("M13 10 L16 15 L18 10",{fill:"currentColor",stroke:"none"}); break;
-    case "udl":    P("M3 3 L19 3"); P("M5 3 L5 11 M11 3 L11 11 M17 3 L17 11"); P("M3 15 L19 15"); break;
-    case "tri":    P("M3 3 L19 11"); P("M5 4 L5 11 M11 7 L11 11"); P("M3 13 L19 13"); break;
+    case "dist":   P("M3 4 L19 8"); P("M5 4 L5 12 M11 6 L11 12 M17 8 L17 12"); P("M3 14 L19 14"); break;
     case "pin":    P("M11 3 L6 12 L16 12 Z"); P("M4 15 L18 15"); break;
     case "roller": P("M11 3 L6 10 L16 10 Z"); el("circle",{cx:8,cy:13,r:1.6},g); el("circle",{cx:14,cy:13,r:1.6},g); break;
     case "fixed":  P("M8 2 L8 16"); P("M8 4 L4 7 M8 8 L4 11 M8 12 L4 15"); break;
@@ -376,8 +382,7 @@ const RENDER = {
     el("circle", {cx:e.x, cy:e.y, r:2.5, fill:e.color}, g);
     drawLabel(g, e.x, e.y - e.r - 8, e.label, e.color);
   },
-  udl(e, g){ distLoad(e, g, false); },
-  tri(e, g){ distLoad(e, g, true); },
+  dist(e, g){ distLoad(e, g); },
   pin(e, g){
     const s = e.s, gg = el("g", {transform:`translate(${e.x},${e.y}) rotate(${-e.angle})`}, g);
     el("polygon", {points:`0,0 ${-0.62*s},${s} ${0.62*s},${s}`, fill:"none",
@@ -437,7 +442,9 @@ const RENDER = {
                 "font-style":"italic"}, g).textContent = e.text;
   },
 };
-function distLoad(e, g, triangular){
+function distLoad(e, g){
+  // Trapezoidal distributed load: linear ramp from End-1 height (h1) to End-2 (h2).
+  // h1==h2 -> UDL; one end 0 -> triangular; otherwise trapezoid.
   const dx = e.x2-e.x1, dy = e.y2-e.y1, L = Math.hypot(dx,dy);
   if (L < 4) return;
   const ux = dx/L, uy = dy/L;
@@ -446,19 +453,17 @@ function distLoad(e, g, triangular){
   const n = Math.max(2, Math.round(L/28));
   for (let i = 0; i <= n; i++){
     const t = i/n;
-    let h = e.h;
-    if (triangular) h = e.h * (e.rev ? t : 1-t);
+    const h = e.h1 + (e.h2 - e.h1) * t;
     const bx = e.x1 + dx*t, by = e.y1 + dy*t;
     if (h > 4) drawArrow(g, bx + px*h, by + py*h, bx, by, e.color, 1.8, 3.5, 9);
   }
-  // top chord
-  const h1 = triangular ? (e.rev ? 0 : e.h) : e.h;
-  const h2 = triangular ? (e.rev ? e.h : 0) : e.h;
-  el("line", {x1:e.x1+px*h1, y1:e.y1+py*h1, x2:e.x2+px*h2, y2:e.y2+py*h2,
+  // sloped top chord from h1 to h2
+  el("line", {x1:e.x1+px*e.h1, y1:e.y1+py*e.h1, x2:e.x2+px*e.h2, y2:e.y2+py*e.h2,
               stroke:e.color, "stroke-width":1.8}, g);
   el("line", {x1:e.x1, y1:e.y1, x2:e.x2, y2:e.y2, stroke:e.color, "stroke-width":1.2,
               "stroke-dasharray":"4 3", opacity:.6}, g);
-  drawLabel(g, (e.x1+e.x2)/2 + px*(e.h+14), (e.y1+e.y2)/2 + py*(e.h+14) + 5, e.label, e.color);
+  const hm = Math.max(e.h1, e.h2);
+  drawLabel(g, (e.x1+e.x2)/2 + px*(hm+14), (e.y1+e.y2)/2 + py*(hm+14) + 5, e.label, e.color);
 }
 
 /* ---------- hit areas & handles ---------- */
@@ -468,11 +473,11 @@ function hitShape(e, g){
   switch(e.type){
     case "beam": case "dim":
       el("line", Object.assign({x1:e.x1,y1:e.y1,x2:e.x2,y2:e.y2}, fat), g); break;
-    case "udl": case "tri": {
+    case "dist": {
       el("line", Object.assign({x1:e.x1,y1:e.y1,x2:e.x2,y2:e.y2}, fat), g);
       const dx=e.x2-e.x1, dy=e.y2-e.y1, L=Math.hypot(dx,dy)||1;
-      const side = e.flip?1:-1, px=-dy/L*side, py=dx/L*side;
-      el("line", Object.assign({x1:e.x1+px*e.h, y1:e.y1+py*e.h, x2:e.x2+px*e.h, y2:e.y2+py*e.h}, fat), g);
+      const side = e.flip?1:-1, px=-dy/L*side, py=dx/L*side, hm=Math.max(e.h1,e.h2);
+      el("line", Object.assign({x1:e.x1+px*hm, y1:e.y1+py*hm, x2:e.x2+px*hm, y2:e.y2+py*hm}, fat), g);
       break;
     }
     case "force": {
@@ -497,7 +502,7 @@ function handlePoints(e){
   switch(e.type){
     case "beam": case "dim":
       return [["p1",e.x1,e.y1], ["p2",e.x2,e.y2]];
-    case "udl": case "tri":
+    case "dist":
       return [["p1",e.x1,e.y1], ["p2",e.x2,e.y2]];
     case "force": {
       const ux=Math.cos(rad(e.angle)), uy=-Math.sin(rad(e.angle));
@@ -554,7 +559,7 @@ function render(){
   elemG.textContent = "";
   for (const e of state.elements){
     const g = el("g", {"data-id":e.id}, elemG);
-    RENDER[e.type](e, g);
+    if (RENDER[e.type]) RENDER[e.type](e, g);
     hitShape(e, g);
   }
 
@@ -607,8 +612,18 @@ function pushHistory(){
   hIndex = history.length - 1;
   try { localStorage.setItem("fbd-autosave", history[hIndex]); } catch(_){}
 }
+function migrate(st){
+  // upgrade legacy udl/tri elements to the unified trapezoidal dist type
+  if (st && st.elements) for (const e of st.elements){
+    if (e.type === "udl"){ e.type = "dist"; e.h1 = e.h2 = e.h; delete e.h; }
+    else if (e.type === "tri"){ e.type = "dist";
+      if (e.rev){ e.h1 = 0; e.h2 = e.h; } else { e.h1 = e.h; e.h2 = 0; }
+      delete e.h; delete e.rev; }
+  }
+  return st;
+}
 function restore(json){
-  try { state = JSON.parse(json); } catch(_){ return; }
+  try { state = migrate(JSON.parse(json)); } catch(_){ return; }
   selectedIds = new Set();
   if (state.bg){
     $("bgOpacity").value = $("bgOpacityN").value = Math.round(state.bg.opacity * 100);
@@ -627,10 +642,8 @@ const PROP_SCHEMAS = {
           ["flip","checkbox","Tail at point (arrow points away)"], ["color","color","Colour"]],
   moment:[["label","text","Label"], ["r","number","Radius"], ["ccw","checkbox","Counter-clockwise"],
           ["color","color","Colour"]],
-  udl:   [["label","text","Label"], ["h","number","Arrow height"], ["flip","checkbox","Flip side"],
-          ["color","color","Colour"]],
-  tri:   [["label","text","Label"], ["h","number","Max height"], ["flip","checkbox","Flip side"],
-          ["rev","checkbox","Reverse taper"], ["color","color","Colour"]],
+  dist:  [["label","text","Label"], ["h1","number","End 1 height"], ["h2","number","End 2 height"],
+          ["flip","checkbox","Flip side"], ["color","color","Colour"]],
   pin:   [["angle","number","Angle °"], ["s","number","Size"], ["color","color","Colour"]],
   roller:[["angle","number","Angle °"], ["s","number","Size"], ["color","color","Colour"]],
   fixed: [["angle","number","Angle °"], ["s","number","Size"], ["color","color","Colour"]],
@@ -659,7 +672,7 @@ function renderProps(){
   body.className = "";
   const title = document.createElement("div");
   title.style.cssText = "font-weight:600;margin-bottom:8px;text-transform:capitalize";
-  title.textContent = sel.type;
+  title.textContent = sel.type === "dist" ? "Distributed load" : sel.type;
   body.appendChild(title);
   for (const [key, kind, lab] of PROP_SCHEMAS[sel.type]){
     const f = document.createElement("div"); f.className = "field";
@@ -845,7 +858,7 @@ window.addEventListener("keydown", ev => {
     if (ev.key === "y"){ ev.preventDefault(); redo(); return; }
     return; // let Ctrl+V paste fire the paste event
   }
-  const keys = {v:"select", b:"beam", f:"force", m:"moment", u:"udl", t:"text"};
+  const keys = {v:"select", b:"beam", f:"force", m:"moment", u:"dist", t:"text"};
   if (keys[ev.key.toLowerCase()] && !ev.altKey){ setTool(keys[ev.key.toLowerCase()]); return; }
   if (ev.key === "Delete" || ev.key === "Backspace"){ deleteSelected(); return; }
   if (ev.key === "Escape"){
@@ -921,13 +934,42 @@ function download(name, blob){
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
-$("btnNew").onclick = () => {
-  if (state.elements.length && !confirm("Clear the canvas?")) return;
+async function saveBlob(name, blob, types){
+  // Native "Save As" dialog where supported; silently fall back to a download.
+  if (window.showSaveFilePicker){
+    try {
+      const handle = await window.showSaveFilePicker({ suggestedName:name, types });
+      const w = await handle.createWritable();
+      await w.write(blob); await w.close();
+      return;
+    } catch(err){
+      if (err && err.name === "AbortError") return;   // user cancelled the dialog
+      /* otherwise fall through to a plain download */
+    }
+  }
+  download(name, blob);
+}
+function confirmClear(){
+  // Custom <dialog> confirm (window.confirm is blocked in the Office task pane).
+  return new Promise(resolve => {
+    const dlg = document.getElementById("confirmDlg");
+    if (!dlg || !dlg.showModal){ resolve(true); return; }
+    const yes = document.getElementById("confirmYes"), no = document.getElementById("confirmNo");
+    const done = v => { try{ dlg.close(); }catch(_){} yes.onclick = no.onclick = null; resolve(v); };
+    yes.onclick = () => done(true);
+    no.onclick  = () => done(false);
+    dlg.showModal();
+  });
+}
+$("btnNew").onclick = async () => {
+  if (state.elements.length && !(await confirmClear())) return;
   state = {elements:[], bg:null}; selectedIds = new Set(); counters = {};
   pushHistory(); renderProps(); render();
 };
 $("btnSave").onclick = () =>
-  download("fbd-diagram.json", new Blob([JSON.stringify(state, null, 1)], {type:"application/json"}));
+  saveBlob("fbd-diagram.json",
+           new Blob([JSON.stringify(state, null, 1)], {type:"application/json"}),
+           [{description:"FBD diagram", accept:{"application/json":[".json"]}}]);
 $("btnOpen").onclick = () => $("fileJson").click();
 $("fileJson").onchange = ev => {
   const f = ev.target.files[0]; if (!f) return;
@@ -957,16 +999,16 @@ function buildExportSvg(){
                  opacity:state.bg.opacity}, out);
   }
   const g = el("g", {}, out);
-  for (const e of state.elements) RENDER[e.type](e, g);
+  for (const e of state.elements) if (RENDER[e.type]) RENDER[e.type](e, g);
   return {out, w:x1-x0, h:y1-y0};
 }
 $("btnSvg").onclick = () => {
-  if (!state.elements.length) return alert("Nothing to export yet.");
+  if (!state.elements.length) { $("hint").textContent = "Nothing to export yet."; return; }
   const {out} = buildExportSvg();
   download("fbd.svg", new Blob([new XMLSerializer().serializeToString(out)], {type:"image/svg+xml"}));
 };
 $("btnPng").onclick = () => {
-  if (!state.elements.length) return alert("Nothing to export yet.");
+  if (!state.elements.length) { $("hint").textContent = "Nothing to export yet."; return; }
   const {out, w, h} = buildExportSvg();
   const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(out)], {type:"image/svg+xml"}));
   const img = new Image();
@@ -995,7 +1037,7 @@ window.addEventListener("resize", render);
   let restored = false;
   try {
     const a = localStorage.getItem("fbd-autosave");
-    if (a){ state = JSON.parse(a); restored = true; }
+    if (a){ state = migrate(JSON.parse(a)); restored = true; }
   } catch(_){}
   if (!restored){
     // small demo so the first open isn't a blank page
@@ -1003,7 +1045,7 @@ window.addEventListener("resize", render);
     const p = FACTORIES.pin(80, 220);   p.id = uid();
     const r = FACTORIES.roller(480, 220); r.id = uid();
     const f = FACTORIES.force(300, 220); f.id = uid();
-    const u = FACTORIES.udl(120, 220);  u.x2 = 260; u.y2 = 220; u.id = uid();
+    const u = FACTORIES.dist(120, 220); u.x2 = 260; u.y2 = 220; u.id = uid();
     const d = FACTORIES.dim(80, 220);   d.x2 = 480; d.y2 = 220; d.off = 60; d.label = "L"; d.id = uid();
     state.elements = [b, p, r, u, f, d];
   }
@@ -1014,9 +1056,8 @@ window.addEventListener("resize", render);
 <script>
 "use strict";
 /* ---- Excel (Office.js) integration ----
-   Separate classic script so it can reach the app globals
-   (state, render, buildExportSvg, FACTORIES, getSelAll, uid, pushHistory).
-   Office undefined in a plain browser -> no-op, so one file serves both uses. */
+   Separate classic script; reaches app globals. Office undefined in a plain
+   browser -> no-op, so one file serves both standalone and add-in use. */
 (function(){
   const grp = document.getElementById("excelGroup");
   function setStatus(m){ const h = document.getElementById("hint"); if (h) h.textContent = m; }
@@ -1038,7 +1079,7 @@ window.addEventListener("resize", render);
     return new Promise((resolve, reject) => {
       const img = new Image();
       let done = false;
-      const finish = () => {                     // wait for full decode incl. nested bg bitmap
+      const finish = () => {
         if (done) return; done = true;
         const c = document.createElement("canvas");
         c.width = Math.round(built.w * scale); c.height = Math.round(built.h * scale);
@@ -1060,12 +1101,16 @@ window.addEventListener("resize", render);
         const sheet = ctx.workbook.worksheets.getActiveWorksheet();
         const shape = sheet.shapes.addImage(png.b64);
         shape.name = "FBD_" + Date.now();
-        const maxW = 500, s = png.w > maxW ? maxW / png.w : 1;
+        const maxW = 500, s = png.w > maxW ? maxW / png.w : 1;   // keep natural size, cap width
         shape.width = png.w * s; shape.height = png.h * s;
-        shape.left = 12; shape.top = 12;
+        // anchor at the selected cell's top-left (floating over the grid, not embedded in the cell)
+        const sel = ctx.workbook.getSelectedRange();
+        sel.load("left, top");
+        await ctx.sync();
+        shape.left = sel.left; shape.top = sel.top;
         await ctx.sync();
       });
-      setStatus("Diagram inserted — drag it into place on the sheet.");
+      setStatus("Diagram inserted at the selected cell — drag to fine-tune.");
     } catch(err){ setStatus("Insert failed: " + (err && err.message || err)); }
   }
 
