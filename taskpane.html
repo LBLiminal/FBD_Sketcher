@@ -158,6 +158,8 @@
   <span class="grp eng-only" id="engGrp" title="Drawing scale used by the equilibrium check">
     <label class="chk">scale <input type="number" id="scalePpu" value="50" style="width:44px"> px = 1</label>
     <input type="text" id="scaleUnit" value="m" style="width:30px" title="length unit name">
+    <label class="chk" title="Arrow size: pixels per unit of force. Increase to enlarge all arrows in proportion.">force <input type="number" id="forceScale" value="6" style="width:38px"> px</label>
+    <label class="chk" title="Draw forces and loads to scale from their magnitudes"><input type="checkbox" id="chkToScale"> to-scale</label>
   </span>
   <span class="grp">
     <label class="chk" title="Show magnitudes, drawing scale, snapping and the live equilibrium check"><input type="checkbox" id="chkEngineer"> engineer</label>
@@ -233,10 +235,11 @@ const svg = $("svg"), worldG = $("world"), bgG = $("bglayer"),
 const GRID = 10;                 // snap grid, world units
 let zoom = 1, panX = 60, panY = 60;
 
-let state = { elements: [], bg: null, scale: {ppu:50, unit:"m"} };  // bg:{href,x,y,scale,opacity}; scale: px per unit
+let state = { elements: [], bg: null, scale: {ppu:50, unit:"m"}, forceScale: 6 };  // forceScale: px per force unit
 let selectedIds = new Set();             // multi-selection
 let tool = "select";
 let engineerMode = false;   // opt-in advanced features
+let toScale = false;        // draw forces/loads to scale from magnitudes
 let counters = {};               // auto-label counters per prefix
 
 /* ---------- small helpers ---------- */
@@ -389,18 +392,19 @@ const RENDER = {
   force(e, g){
     const ux = Math.cos(rad(e.angle)), uy = -Math.sin(rad(e.angle));
     const Ax = e.x, Ay = e.y;                       // application point
+    const len = forceLenEff(e);                     // to-scale length or free-drawn
     if (!e.resolve){
       let tail, tip;
-      if (e.flip){ tail = [Ax, Ay]; tip = [Ax + ux*e.len, Ay + uy*e.len]; }
-      else       { tail = [Ax - ux*e.len, Ay - uy*e.len]; tip = [Ax, Ay]; }
+      if (e.flip){ tail = [Ax, Ay]; tip = [Ax + ux*len, Ay + uy*len]; }
+      else       { tail = [Ax - ux*len, Ay - uy*len]; tip = [Ax, Ay]; }
       drawArrow(g, tail[0], tail[1], tip[0], tip[1], e.color, 2.2);
-      drawLabel(g, tail[0] - ux*14 + (e.flip?ux*(e.len+28):0),
-                   tail[1] - uy*14 + (e.flip?uy*(e.len+28):0) + 5, e.label, e.color);
+      drawLabel(g, tail[0] - ux*14 + (e.flip?ux*(len+28):0),
+                   tail[1] - uy*14 + (e.flip?uy*(len+28):0) + 5, e.label, e.color);
       return;
     }
     // resolved: orthogonal x/y components meeting at the application point
     const s = e.flip ? 1 : -1;                       // components point away (flip) or into (default) A
-    const fx = e.len * ux, fy = e.len * uy;          // signed screen-space component lengths
+    const fx = len * ux, fy = len * uy;              // signed screen-space component lengths
     const Px = Ax + s*fx, Qy = Ay + s*fy, Cx = Ax + s*fx, Cy = Ay + s*fy;
     const dash = {stroke:e.color, "stroke-width":1, "stroke-dasharray":"4 3", opacity:.5, fill:"none"};
     // dashed resultant (hypotenuse) + rectangle completion
@@ -517,19 +521,20 @@ function distLoad(e, g){
   const ux = dx/L, uy = dy/L;
   const side = e.flip ? 1 : -1;
   const px = -uy*side, py = ux*side;              // normal on chosen side
+  const [H1, H2] = distH(e);
   const n = Math.max(2, Math.round(L/28));
   for (let i = 0; i <= n; i++){
     const t = i/n;
-    const h = e.h1 + (e.h2 - e.h1) * t;
+    const h = H1 + (H2 - H1) * t;
     const bx = e.x1 + dx*t, by = e.y1 + dy*t;
     if (h > 4) drawArrow(g, bx + px*h, by + py*h, bx, by, e.color, 1.8, 3.5, 9);
   }
   // sloped top chord from h1 to h2
-  el("line", {x1:e.x1+px*e.h1, y1:e.y1+py*e.h1, x2:e.x2+px*e.h2, y2:e.y2+py*e.h2,
+  el("line", {x1:e.x1+px*H1, y1:e.y1+py*H1, x2:e.x2+px*H2, y2:e.y2+py*H2,
               stroke:e.color, "stroke-width":1.8}, g);
   el("line", {x1:e.x1, y1:e.y1, x2:e.x2, y2:e.y2, stroke:e.color, "stroke-width":1.2,
               "stroke-dasharray":"4 3", opacity:.6}, g);
-  const hm = Math.max(e.h1, e.h2);
+  const hm = Math.max(H1, H2);
   drawLabel(g, (e.x1+e.x2)/2 + px*(hm+14), (e.y1+e.y2)/2 + py*(hm+14) + 5, e.label, e.color);
 }
 
@@ -543,19 +548,19 @@ function hitShape(e, g){
     case "dist": {
       el("line", Object.assign({x1:e.x1,y1:e.y1,x2:e.x2,y2:e.y2}, fat), g);
       const dx=e.x2-e.x1, dy=e.y2-e.y1, L=Math.hypot(dx,dy)||1;
-      const side = e.flip?1:-1, px=-dy/L*side, py=dx/L*side, hm=Math.max(e.h1,e.h2);
+      const side = e.flip?1:-1, px=-dy/L*side, py=dx/L*side, [H1,H2]=distH(e), hm=Math.max(H1,H2);
       el("line", Object.assign({x1:e.x1+px*hm, y1:e.y1+py*hm, x2:e.x2+px*hm, y2:e.y2+py*hm}, fat), g);
       break;
     }
     case "force": {
-      const ux=Math.cos(rad(e.angle)), uy=-Math.sin(rad(e.angle));
+      const ux=Math.cos(rad(e.angle)), uy=-Math.sin(rad(e.angle)), len=forceLenEff(e);
       if (e.resolve){
-        const s=e.flip?1:-1, fx=e.len*ux, fy=e.len*uy;
+        const s=e.flip?1:-1, fx=len*ux, fy=len*uy;
         el("line", Object.assign({x1:e.x, y1:e.y, x2:e.x+s*fx, y2:e.y}, fat), g);        // horizontal
         el("line", Object.assign({x1:e.x, y1:e.y, x2:e.x, y2:e.y+s*fy}, fat), g);        // vertical
         el("line", Object.assign({x1:e.x, y1:e.y, x2:e.x+s*fx, y2:e.y+s*fy}, fat), g);   // resultant
       } else {
-        const x2 = e.flip ? e.x+ux*e.len : e.x-ux*e.len, y2 = e.flip ? e.y+uy*e.len : e.y-uy*e.len;
+        const x2 = e.flip ? e.x+ux*len : e.x-ux*len, y2 = e.flip ? e.y+uy*len : e.y-uy*len;
         el("line", Object.assign({x1:e.x, y1:e.y, x2, y2}, fat), g);
       }
       break;
@@ -580,9 +585,9 @@ function handlePoints(e){
     case "dist":
       return [["p1",e.x1,e.y1], ["p2",e.x2,e.y2]];
     case "force": {
-      const ux=Math.cos(rad(e.angle)), uy=-Math.sin(rad(e.angle));
-      return e.flip ? [["vec", e.x+ux*e.len, e.y+uy*e.len]]
-                    : [["vec", e.x-ux*e.len, e.y-uy*e.len]];
+      const ux=Math.cos(rad(e.angle)), uy=-Math.sin(rad(e.angle)), len=forceLenEff(e);
+      return e.flip ? [["vec", e.x+ux*len, e.y+uy*len]]
+                    : [["vec", e.x-ux*len, e.y-uy*len]];
     }
     case "moment": return [["rad", e.x+e.r*0.7071, e.y-e.r*0.7071]];
     default: return [];
@@ -593,7 +598,7 @@ function applyHandle(e, name, wx, wy){
   else if (name === "p2"){ const p = snapPoint(wx, wy, e.id); e.x2 = p[0]; e.y2 = p[1]; }
   else if (name === "vec"){
     const dx = wx - e.x, dy = wy - e.y;
-    e.len = Math.max(15, Math.round(Math.hypot(dx, dy)));
+    if (!toScale) e.len = Math.max(15, Math.round(Math.hypot(dx, dy)));   // length locked to magnitude when to-scale
     let a = Math.atan2(-dy, dx) * 180 / Math.PI;   // math angle of point rel. anchor
     if (!e.flip) a += 180;                           // handle sits at the tail
     a = Math.round(((a % 360) + 360) % 360);
@@ -693,9 +698,37 @@ function snapGeom(wx, wy, excl){
   return best;
 }
 function snapPoint(wx, wy, excl){ const g = snapGeom(wx, wy, excl); return g ? [g[0], g[1]] : [snap(wx), snap(wy)]; }
+function forceLenEff(e){          // drawn arrow length: from magnitude when to-scale, else free-drawn
+  if (!toScale || !e.mag) return e.len;
+  return Math.max(6, Math.abs(e.mag) * (state.forceScale || 1)) * (Math.sign(e.len) || 1);
+}
+function distH(e){                // drawn load heights: from intensity when to-scale, else free-drawn
+  if (toScale && (e.mag1 || e.mag2))
+    return [Math.abs(e.mag1||0) * (state.forceScale||1), Math.abs(e.mag2||0) * (state.forceScale||1)];
+  return [e.h1, e.h2];
+}
 function syncScaleInputs(){
   if ($("scalePpu")) $("scalePpu").value = state.scale.ppu;
   if ($("scaleUnit")) $("scaleUnit").value = state.scale.unit;
+  if ($("forceScale")) $("forceScale").value = state.forceScale != null ? state.forceScale : 6;
+}
+function addLengthField(sel, body){
+  const ppu = (state.scale && state.scale.ppu) || 1, unit = (state.scale && state.scale.unit) || "m";
+  const f = document.createElement("div"); f.className = "field";
+  const l = document.createElement("label"); l.textContent = "Length (" + unit + ")"; f.appendChild(l);
+  const inp = document.createElement("input"); inp.type = "number"; inp.step = "any";
+  inp.value = Math.round(Math.hypot(sel.x2-sel.x1, sel.y2-sel.y1) / ppu * 1000) / 1000;
+  inp.oninput = () => {
+    const s = getSel(); if (!s) return;
+    const v = parseFloat(inp.value); if (!(v > 0)) return;
+    let ex = s.x2-s.x1, ey = s.y2-s.y1, L = Math.hypot(ex, ey);
+    if (L < 1e-6){ ex = 1; ey = 0; L = 1; }
+    const npx = v * ((state.scale && state.scale.ppu) || 1);
+    s.x2 = s.x1 + ex/L*npx; s.y2 = s.y1 + ey/L*npx;
+    render();
+  };
+  inp.onchange = pushHistory;
+  f.appendChild(inp); body.appendChild(f);
 }
 function updateEquil(){
   const panel = $("equilPanel"); if (!panel) return;
@@ -763,6 +796,7 @@ function restore(json){
   try { state = migrate(JSON.parse(json)); } catch(_){ return; }
   selectedIds = new Set();
   if (!state.scale) state.scale = {ppu:50, unit:"m"};
+  if (state.forceScale == null) state.forceScale = 6;
   syncScaleInputs();
   if (state.bg){
     $("bgOpacity").value = $("bgOpacityN").value = Math.round(state.bg.opacity * 100);
@@ -840,6 +874,7 @@ function renderProps(){
   };
   for (const spec of PROP_SCHEMAS[sel.type]) addField(spec);
   if (engineerMode && ENG_SCHEMAS[sel.type]) for (const spec of ENG_SCHEMAS[sel.type]) addField(spec);
+  if (engineerMode && sel.x1 !== undefined && ["beam","dist","dim"].includes(sel.type)) addLengthField(sel, body);
   const del = document.createElement("button");
   del.className = "del"; del.textContent = "Delete element";
   del.onclick = deleteSelected;
@@ -1253,6 +1288,9 @@ $("chkEngineer").onchange = e => {
 $("scalePpu").oninput = e => { state.scale.ppu = parseFloat(e.target.value) || 1; render(); };
 $("scaleUnit").oninput = e => { state.scale.unit = e.target.value || "m"; render(); };
 $("scalePpu").onchange = $("scaleUnit").onchange = pushHistory;
+$("forceScale").oninput = e => { state.forceScale = parseFloat(e.target.value) || 1; render(); };
+$("forceScale").onchange = pushHistory;
+$("chkToScale").onchange = e => { toScale = e.target.checked; try { localStorage.setItem("fbd-toscale", toScale?"1":"0"); } catch(_){}; render(); };
 $("btnUndo").onclick = undo;
 $("btnRedo").onclick = redo;
 $("btnHelp").onclick = () => $("helpDlg").showModal();
@@ -1276,8 +1314,11 @@ window.addEventListener("resize", render);
     state.elements = [b, p, r, u, f, d];
   }
   if (!state.scale) state.scale = {ppu:50, unit:"m"};
+  if (state.forceScale == null) state.forceScale = 6;
   try { engineerMode = localStorage.getItem("fbd-eng") === "1"; } catch(_){}
+  try { toScale = localStorage.getItem("fbd-toscale") === "1"; } catch(_){}
   $("chkEngineer").checked = engineerMode;
+  if ($("chkToScale")) $("chkToScale").checked = toScale;
   document.body.classList.toggle("eng", engineerMode);
   syncScaleInputs();
   pushHistory(); render();
