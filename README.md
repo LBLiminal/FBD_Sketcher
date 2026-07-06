@@ -21,33 +21,9 @@ assets/            icons used on the ribbon button
 
 ---
 
-## One-time setup (GitHub Pages hosting)
+## One-time setup
 
-Excel will only load an add-in panel from an **https web address**, so the files
-have to live somewhere online. GitHub Pages does this for free.
-
-### 1. Publish the files
-
-1. Create a free account at <https://github.com> if you don't have one.
-2. Create a new **public** repository named `fbd-sketcher`.
-3. Upload the contents of this folder into the repo (drag the files into the
-   GitHub web uploader is fine): `taskpane.html`, `commands.html`, `manifest.xml`,
-   and the `assets/` folder.
-4. In the repo go to **Settings → Pages**, set **Source = Deploy from a branch**,
-   branch **main**, folder **/(root)**, and Save.
-5. After a minute your files are live at:
-   `https://YOURNAME.github.io/fbd-sketcher/taskpane.html`
-   (replace `YOURNAME` with your GitHub username). Open that URL in a browser to
-   confirm the sketcher loads.
-
-### 2. Point the manifest at your URLs
-
-Open `manifest.xml` and replace **every** `YOURNAME` with your GitHub username
-(there are several). If you used a repo name other than `fbd-sketcher`, update that
-too. Save. (Optional sanity check, needs internet:
-`npx office-addin-manifest validate manifest.xml`.)
-
-### 3. Register the manifest with Excel (sideload)
+### 1. Register the manifest with Excel (sideload)
 
 **Windows — via a Shared Folder catalog:**
 
@@ -90,10 +66,7 @@ if you change the ribbon button or manifest itself.
 ## Notes
 
 - **Fonts / licensing:** the panel embeds only Martian Mono (SIL Open Font Licence,
-  freely redistributable). The commercial TT Hoves Pro is **not** embedded — the UI
-  falls back to Arial / Arial Narrow — so there's no proprietary font exposed on the
-  public repo. If you ever want the branded type back for a private/local build, that's
-  a quick swap.
+  freely redistributable).
 - **Nothing leaves the sheet without you:** the add-in only reads the cells you
   select and only writes an image when you click Insert. It never moves data on its own.
 - **Manifest Id** is a fixed GUID unique to this add-in; leave it as-is.
