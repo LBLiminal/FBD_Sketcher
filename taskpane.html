@@ -710,7 +710,8 @@ function updateEquil(){
   for (const e of state.elements){
     if (e.type === "force" && e.mag){
       any = true; if (e.unit) forceU = e.unit;
-      const a = rad(e.angle), fx = e.mag*Math.cos(a), fy = e.mag*Math.sin(a);
+      const dir = Math.sign(e.len) || 1;          // honour a negative length (arrow drawn reversed)
+      const a = rad(e.angle), fx = e.mag*Math.cos(a)*dir, fy = e.mag*Math.sin(a)*dir;
       Fx += fx; Fy += fy;
       const [px,py] = real(e.x, e.y);
       M += (px-RX)*fy - (py-RY)*fx;
