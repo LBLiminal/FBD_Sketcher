@@ -237,7 +237,7 @@ function uid(){ return "e" + Math.random().toString(36).slice(2, 9); }
 const FACTORIES = {
   beam:  (x,y) => ({type:"beam", x1:x, y1:y, x2:x, y2:y, w:5, color:"#222222"}),
   node:  (x,y) => ({type:"node", x, y, r:4, color:"#222222"}),
-  force: (x,y) => ({type:"force", x, y, angle:90, len:70, flip:false, label:nextLabel("F"), color:"#cc2222"}),
+  force: (x,y) => ({type:"force", x, y, angle:90, len:70, flip:false, resolve:false, label:nextLabel("F"), color:"#cc2222"}),
   moment:(x,y) => ({type:"moment", x, y, r:26, ccw:true, label:nextLabel("M"), color:"#1155cc"}),
   dist:  (x,y) => ({type:"dist", x1:x, y1:y, x2:x, y2:y, h1:40, h2:40, flip:false, label:nextLabel("w"), color:"#cc2222"}),
   pin:   (x,y) => ({type:"pin", x, y, angle:0, s:22, color:"#222222"}),
@@ -354,11 +354,44 @@ const RENDER = {
   },
   force(e, g){
     const ux = Math.cos(rad(e.angle)), uy = -Math.sin(rad(e.angle));
-    let tail, tip;
-    if (e.flip){ tail = [e.x, e.y]; tip = [e.x + ux*e.len, e.y + uy*e.len]; }
-    else       { tail = [e.x - ux*e.len, e.y - uy*e.len]; tip = [e.x, e.y]; }
-    drawArrow(g, tail[0], tail[1], tip[0], tip[1], e.color, 2.2);
-    drawLabel(g, tail[0] - ux*14 + (e.flip?ux*(e.len+28):0), tail[1] - uy*14 + (e.flip?uy*(e.len+28):0) + 5, e.label, e.color);
+    const Ax = e.x, Ay = e.y;                       // application point
+    if (!e.resolve){
+      let tail, tip;
+      if (e.flip){ tail = [Ax, Ay]; tip = [Ax + ux*e.len, Ay + uy*e.len]; }
+      else       { tail = [Ax - ux*e.len, Ay - uy*e.len]; tip = [Ax, Ay]; }
+      drawArrow(g, tail[0], tail[1], tip[0], tip[1], e.color, 2.2);
+      drawLabel(g, tail[0] - ux*14 + (e.flip?ux*(e.len+28):0),
+                   tail[1] - uy*14 + (e.flip?uy*(e.len+28):0) + 5, e.label, e.color);
+      return;
+    }
+    // resolved: orthogonal x/y components meeting at the application point
+    const s = e.flip ? 1 : -1;                       // components point away (flip) or into (default) A
+    const fx = e.len * ux, fy = e.len * uy;          // signed screen-space component lengths
+    const Px = Ax + s*fx, Qy = Ay + s*fy, Cx = Ax + s*fx, Cy = Ay + s*fy;
+    const dash = {stroke:e.color, "stroke-width":1, "stroke-dasharray":"4 3", opacity:.5, fill:"none"};
+    // dashed resultant (hypotenuse) + rectangle completion
+    el("line", Object.assign({x1:Ax,y1:Ay,x2:Cx,y2:Cy}, dash), g);
+    el("line", Object.assign({x1:Px,y1:Ay,x2:Cx,y2:Cy}, dash), g);
+    el("line", Object.assign({x1:Ax,y1:Qy,x2:Cx,y2:Cy}, dash), g);
+    // solid component arrows (into A by default, away from A when flipped)
+    if (Math.abs(fx) > 3){
+      if (e.flip) drawArrow(g, Ax, Ay, Px, Ay, e.color, 2);
+      else        drawArrow(g, Px, Ay, Ax, Ay, e.color, 2);
+      drawLabel(g, (Ax+Px)/2, Ay + (s < 0 ? 16 : -8), e.label + "x", e.color, 13);
+    }
+    if (Math.abs(fy) > 3){
+      if (e.flip) drawArrow(g, Ax, Ay, Ax, Qy, e.color, 2);
+      else        drawArrow(g, Ax, Qy, Ax, Ay, e.color, 2);
+      drawLabel(g, Ax + 12, (Ay+Qy)/2 + 4, e.label + "y", e.color, 13);
+    }
+    // right-angle marker in the corner at A
+    if (Math.abs(fx) > 6 && Math.abs(fy) > 6){
+      const mx = 7*Math.sign(s*fx), my = 7*Math.sign(s*fy);
+      el("polyline", {points:`${Ax+mx},${Ay} ${Ax+mx},${Ay+my} ${Ax},${Ay+my}`,
+                      fill:"none", stroke:e.color, "stroke-width":1, opacity:.6}, g);
+    }
+    // resultant label out beyond the far corner
+    drawLabel(g, Cx + s*ux*10, Cy + s*uy*10 + 4, e.label, e.color);
   },
   moment(e, g){
     // Fixed ring with the opening always at the bottom; only the arrowhead
@@ -482,8 +515,16 @@ function hitShape(e, g){
     }
     case "force": {
       const ux=Math.cos(rad(e.angle)), uy=-Math.sin(rad(e.angle));
-      const x2 = e.flip ? e.x+ux*e.len : e.x-ux*e.len, y2 = e.flip ? e.y+uy*e.len : e.y-uy*e.len;
-      el("line", Object.assign({x1:e.x, y1:e.y, x2, y2}, fat), g); break;
+      if (e.resolve){
+        const s=e.flip?1:-1, fx=e.len*ux, fy=e.len*uy;
+        el("line", Object.assign({x1:e.x, y1:e.y, x2:e.x+s*fx, y2:e.y}, fat), g);        // horizontal
+        el("line", Object.assign({x1:e.x, y1:e.y, x2:e.x, y2:e.y+s*fy}, fat), g);        // vertical
+        el("line", Object.assign({x1:e.x, y1:e.y, x2:e.x+s*fx, y2:e.y+s*fy}, fat), g);   // resultant
+      } else {
+        const x2 = e.flip ? e.x+ux*e.len : e.x-ux*e.len, y2 = e.flip ? e.y+uy*e.len : e.y-uy*e.len;
+        el("line", Object.assign({x1:e.x, y1:e.y, x2, y2}, fat), g);
+      }
+      break;
     }
     case "moment":
       el("circle", {cx:e.x, cy:e.y, r:e.r, fill:"none", stroke:"rgba(0,0,0,0)",
@@ -639,7 +680,8 @@ const PROP_SCHEMAS = {
   beam:  [["w","number","Thickness"], ["color","color","Colour"]],
   node:  [["r","number","Radius"], ["color","color","Colour"]],
   force: [["label","text","Label"], ["len","number","Length"], ["angle","number","Angle °"],
-          ["flip","checkbox","Tail at point (arrow points away)"], ["color","color","Colour"]],
+          ["flip","checkbox","Tail at point (arrow points away)"],
+          ["resolve","checkbox","Show resolved components (x, y)"], ["color","color","Colour"]],
   moment:[["label","text","Label"], ["r","number","Radius"], ["ccw","checkbox","Counter-clockwise"],
           ["color","color","Colour"]],
   dist:  [["label","text","Label"], ["h1","number","End 1 height"], ["h2","number","End 2 height"],
