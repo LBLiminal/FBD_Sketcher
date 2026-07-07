@@ -92,6 +92,10 @@
          color:var(--chrome-muted); display:flex; gap:20px; font-size:12px; align-items:center;}
   footer .hint{flex:1;}
   #coords{font-family:var(--font-mono); font-size:10px; letter-spacing:.1em; color:var(--chrome-muted);}
+  #saveState{font-family:var(--font-mono); font-size:10px; letter-spacing:.1em; color:var(--chrome-muted);
+             opacity:0; transition:opacity .4s; white-space:nowrap;}
+  #saveState.on{opacity:1;}
+  #saveState.err{color:var(--chrome-danger); opacity:1;}
 
   dialog{background:var(--chrome-bg); color:var(--chrome-text); border:1px solid var(--chrome-line-strong); border-radius:6px;
          padding:22px 24px; max-width:480px; box-shadow:0 12px 32px rgba(25,25,25,.28);}
@@ -139,20 +143,24 @@
   </span>
   <span class="grp">
     <label class="chk"><input type="checkbox" id="chkGrid" checked> grid</label>
+    <input type="number" id="gridSize" min="2" max="200" value="10" style="width:44px" title="Grid / snap spacing (world px)">
     <label class="chk"><input type="checkbox" id="chkSnap" checked> snap</label>
+    <button id="btnFit" title="Zoom to fit the whole diagram (0)">Fit</button>
     <button id="btnUndo" title="Ctrl+Z">↩</button>
-    <button id="btnRedo" title="Ctrl+Y">↪</button>
+    <button id="btnRedo" title="Ctrl+Y / Ctrl+Shift+Z">↪</button>
   </span>
   <span class="grp">
     <button id="btnSvg" title="Export vector SVG">Export SVG</button>
-    <button id="btnPng" title="Export PNG (2×)">Export PNG</button>
+    <button id="btnPng" title="Export PNG at the chosen resolution">Export PNG</button>
     <button id="btnCopyPng" title="Copy the diagram to the clipboard as a PNG">Copy PNG</button>
+    <select id="expScale" title="PNG export / copy resolution"><option value="1">1×</option><option value="2" selected>2×</option><option value="4">4×</option></select>
     <label class="chk"><input type="checkbox" id="chkExpBg" checked> incl. BG</label>
     <label class="chk" title="Export with a transparent background instead of white"><input type="checkbox" id="chkExpTransparent"> transparent</label>
   </span>
   <span class="grp" id="excelGroup" style="display:none">
-    <button id="btnXlInsert" title="Render the diagram into the active worksheet at the selected cell">Insert to sheet</button>
-    <button id="btnXlPull" title="Pull selected Excel cell values in as labels (or onto the selected element)">Pull cells</button>
+    <button id="btnXlInsert" title="Insert the diagram into the worksheet — replaces the previous image of this diagram if one exists">Insert to sheet</button>
+    <button id="btnXlPull" title="Pull selected Excel cell values in as labels (or onto the selected element) — pulled cells stay linked">Pull cells</button>
+    <button id="btnXlRefresh" title="Re-pull every cell-linked label from the workbook">Refresh</button>
     <button id="btnXlBook" title="Save / load named diagrams inside this workbook">Book…</button>
   </span>
   <span class="grp eng-only" id="engGrp" title="Drawing scale used by the equilibrium check">
@@ -161,6 +169,7 @@
     <label class="chk" title="Arrow size: pixels per unit of force. Increase to enlarge all arrows in proportion.">force <input type="number" id="forceScale" value="6" style="width:38px"> px</label>
     <label class="chk" title="Draw forces and loads to scale from their magnitudes"><input type="checkbox" id="chkToScale"> to-scale</label>
     <label class="chk" title="Global size multiplier for all dimension text &amp; arrows">dim <input type="number" id="dimScale" value="1" step="0.25" style="width:40px"></label>
+    <label class="chk" title="Grid / snap spacing in drawing units (replaces the px grid while engineer mode is on)">grid <input type="number" id="gridReal" value="0.2" step="0.05" min="0.01" style="width:48px"></label>
   </span>
   <span class="grp">
     <label class="chk" title="Show magnitudes, drawing scale, snapping and the live equilibrium check"><input type="checkbox" id="chkEngineer"> engineer</label>
@@ -185,23 +194,27 @@
   </aside>
 </div>
 
-<footer><span class="hint" id="hint">Pick a tool, click (or drag) on the canvas. Paste an image any time to use it as a background.</span><span id="coords"></span></footer>
+<footer><span class="hint" id="hint">Pick a tool, click (or drag) on the canvas. Paste an image any time to use it as a background.</span><span id="saveState"></span><span id="coords"></span></footer>
 
 <dialog id="helpDlg">
   <h2>Shortcuts</h2>
   <table>
     <tr><td>V B F M U T</td><td>select · beam · force · moment · UDL · text</td></tr>
-    <tr><td>Ctrl+V</td><td>paste image from clipboard as background</td></tr>
-    <tr><td>Ctrl+Z / Ctrl+Y</td><td>undo / redo</td></tr>
+    <tr><td>P R X S</td><td>pin · roller · fixed · spring</td></tr>
+    <tr><td>Ctrl+V</td><td>paste image (background) or copied elements</td></tr>
+    <tr><td>Ctrl+C</td><td>copy selected element(s)</td></tr>
+    <tr><td>Ctrl+Z / Ctrl+Y</td><td>undo / redo (Ctrl+Shift+Z also redoes)</td></tr>
     <tr><td>Ctrl+D</td><td>duplicate selected element(s)</td></tr>
     <tr><td>Delete</td><td>remove selected element(s)</td></tr>
     <tr><td>Shift+click / drag</td><td>add to selection / box-select</td></tr>
     <tr><td>Arrow keys</td><td>nudge selected element(s)</td></tr>
-    <tr><td>Esc</td><td>deselect / back to select tool</td></tr>
+    <tr><td>[ / ]</td><td>send backward / bring forward</td></tr>
+    <tr><td>0</td><td>zoom to fit</td></tr>
+    <tr><td>Esc</td><td>cancel drag · deselect · back to select tool</td></tr>
     <tr><td>Wheel</td><td>zoom (cursor-centred)</td></tr>
     <tr><td>Space-drag / middle-drag</td><td>pan</td></tr>
   </table>
-  <p style="margin-top:12px;color:var(--chrome-muted);line-height:1.55">Point tools: single click to place. Beams, loads &amp; dimensions: drag, or click-move-click. Drag the cocoa handles to edit geometry. Diagrams autosave to this browser; use Save for a portable .json.</p>
+  <p style="margin-top:12px;color:var(--chrome-muted);line-height:1.55">Point tools: single click to place. Beams, loads &amp; dimensions: drag, or click-move-click. Drag the square handles to edit geometry; drag the round handle to move an element's label clear of overlaps (Reset label position in properties puts it back). Loads and supports placed on a beam attach to it and follow when it moves — drag them clear to detach, or use Detach in properties. In engineer mode the equilibrium panel can Solve reactions for a determinate support set (pin + roller, or one fixed), and grid snapping switches to real units. Diagrams autosave to this browser; use Save for a portable .json.</p>
   <button onclick="this.closest('dialog').close()">Close</button>
 </dialog>
 
@@ -233,7 +246,7 @@ const $ = id => document.getElementById(id);
 const svg = $("svg"), worldG = $("world"), bgG = $("bglayer"),
       gridG = $("gridlayer"), elemG = $("elements"), overG = $("overlay");
 
-const GRID = 10;                 // snap grid, world units
+let GRID = 10;                   // snap grid, world units (adjustable in the header)
 let zoom = 1, panX = 60, panY = 60;
 
 let state = { elements: [], bg: null, scale: {ppu:50, unit:"m"}, forceScale: 6, dimScale: 1 };  // dimScale: dimension text/arrow size multiplier
@@ -251,7 +264,13 @@ function el(tag, attrs, parent){
   return n;
 }
 const rad = d => d * Math.PI / 180;
-const snap = v => $("chkSnap").checked ? Math.round(v / GRID) * GRID : Math.round(v * 10) / 10;
+function gridStep(){
+  // engineer mode: snap in real units (e.g. 0.2 m), converted to world px
+  if (engineerMode && state.scale && state.scale.grid > 0 && state.scale.ppu > 0)
+    return state.scale.grid * state.scale.ppu;
+  return GRID;
+}
+const snap = v => { const g = gridStep(); return $("chkSnap").checked ? Math.round(v / g) * g : Math.round(v * 10) / 10; };
 function screenToWorld(ev){
   const r = svg.getBoundingClientRect();
   return { x: (ev.clientX - r.left - panX) / zoom, y: (ev.clientY - r.top - panY) / zoom };
@@ -259,6 +278,15 @@ function screenToWorld(ev){
 function nextLabel(prefix){
   counters[prefix] = (counters[prefix] || 0) + 1;
   return prefix + counters[prefix];
+}
+function rebuildCounters(){
+  // scan existing labels so new elements continue the numbering instead of
+  // restarting at F1 after a reload / open
+  counters = {};
+  for (const e of state.elements){
+    const m = /^([A-Za-z]+?)(\d+)$/.exec(e.label || "");
+    if (m) counters[m[1]] = Math.max(counters[m[1]] || 0, +m[2]);
+  }
 }
 function uid(){ return "e" + Math.random().toString(36).slice(2, 9); }
 
@@ -285,7 +313,7 @@ const TOOLS = [
   ["sect","Loads"],
   ["force","Force","F"], ["moment","Moment","M"], ["dist","UDL","U"],
   ["sect","Supports"],
-  ["pin","Pin",""], ["roller","Roller",""], ["fixed","Fixed",""], ["spring","Spring",""],
+  ["pin","Pin","P"], ["roller","Roller","R"], ["fixed","Fixed","X"], ["spring","Spring","S"],
   ["sect","Annotate"],
   ["dim","Dimension",""], ["text","Text","T"],
   ["sect","Templates"],
@@ -407,8 +435,8 @@ const RENDER = {
       if (e.flip){ tail = [Ax, Ay]; tip = [Ax + ux*len, Ay + uy*len]; }
       else       { tail = [Ax - ux*len, Ay - uy*len]; tip = [Ax, Ay]; }
       drawArrow(g, tail[0], tail[1], tip[0], tip[1], e.color, 2.2);
-      drawLabel(g, tail[0] - ux*14 + (e.flip?ux*(len+28):0),
-                   tail[1] - uy*14 + (e.flip?uy*(len+28):0) + 5, e.label, e.color);
+      const lp = labelPos(e);
+      drawLabel(g, lp[0], lp[1], e.label, e.color);
       return;
     }
     // resolved: orthogonal x/y components meeting at the application point
@@ -438,7 +466,8 @@ const RENDER = {
                       fill:"none", stroke:e.color, "stroke-width":1, opacity:.6}, g);
     }
     // resultant label out beyond the far corner
-    drawLabel(g, Cx + s*ux*10, Cy + s*uy*10 + 4, e.label, e.color);
+    const rlp = labelPos(e);
+    drawLabel(g, rlp[0], rlp[1], e.label, e.color);
   },
   moment(e, g){
     // Fixed ring with the opening always at the bottom; only the arrowhead
@@ -460,7 +489,8 @@ const RENDER = {
     const tx = dir * -Math.sin(aHead), ty = dir * -Math.cos(aHead);
     drawArrow(g, hx - tx * 14, hy - ty * 14, hx, hy, e.color, 2.2, 5, 13);
     el("circle", {cx:e.x, cy:e.y, r:2.5, fill:e.color}, g);
-    drawLabel(g, e.x, e.y - e.r - 8, e.label, e.color);
+    const lp = labelPos(e);
+    drawLabel(g, lp[0], lp[1], e.label, e.color);
   },
   dist(e, g){ distLoad(e, g); },
   pin(e, g){
@@ -516,8 +546,8 @@ const RENDER = {
     const ux = dx/L, uy = dy/L;
     el("polygon", {points:`${a[0]},${a[1]} ${a[0]+ux*ah+px*aw},${a[1]+uy*ah+py*aw} ${a[0]+ux*ah-px*aw},${a[1]+uy*ah-py*aw}`, fill:e.color}, g);
     el("polygon", {points:`${b[0]},${b[1]} ${b[0]-ux*ah+px*aw},${b[1]-uy*ah+py*aw} ${b[0]-ux*ah-px*aw},${b[1]-uy*ah-py*aw}`, fill:e.color}, g);
-    const mx = (a[0]+b[0])/2 + px*lo, my = (a[1]+b[1])/2 + py*lo;
-    drawLabel(g, mx, my + 4*f, e.label || (Math.round(L) + ""), e.color, 13*f);
+    const lp = labelPos(e);
+    drawLabel(g, lp[0], lp[1], e.label || dimAuto(L), e.color, 13*f);
   },
   text(e, g){
     el("text", {x:e.x, y:e.y, fill:e.color, "font-size":e.size, "font-family":"Georgia,serif",
@@ -545,8 +575,8 @@ function distLoad(e, g){
               stroke:e.color, "stroke-width":1.8}, g);
   el("line", {x1:e.x1, y1:e.y1, x2:e.x2, y2:e.y2, stroke:e.color, "stroke-width":1.2,
               "stroke-dasharray":"4 3", opacity:.6}, g);
-  const hm = Math.max(H1, H2);
-  drawLabel(g, (e.x1+e.x2)/2 + px*(hm+14), (e.y1+e.y2)/2 + py*(hm+14) + 5, e.label, e.color);
+  const lp = labelPos(e);
+  drawLabel(g, lp[0], lp[1], e.label, e.color);
 }
 
 /* ---------- hit areas & handles ---------- */
@@ -599,6 +629,14 @@ function hitShape(e, g){
 }
 function handlePoints(e){
   // [name, x, y] draggable handles for the selected element
+  const pts = geomHandles(e);
+  // round handle on the label so overlapping text can be dragged clear
+  if ((e.type === "dim") || (e.label && ["force","moment","dist"].includes(e.type))){
+    const p = labelPos(e); if (p) pts.push(["lab", p[0], p[1]]);
+  }
+  return pts;
+}
+function geomHandles(e){
   switch(e.type){
     case "dim":
       return [["p1",e.x1,e.y1], ["p2",e.x2,e.y2]];
@@ -619,13 +657,16 @@ function handlePoints(e){
   }
 }
 function applyHandle(e, name, wx, wy){
-  if (name === "p1"){ const p = snapPoint(wx, wy, e.id); e.x1 = p[0]; e.y1 = p[1]; }
-  else if (name === "p2"){ const p = snapPoint(wx, wy, e.id); e.x2 = p[0]; e.y2 = p[1]; }
+  if (name === "p1"){ const p = snapPoint(wx, wy, e.id); e.x1 = p[0]; e.y1 = p[1];
+                      if (e.type === "dist" || e.type === "dim") attachEnd(e, "1"); }
+  else if (name === "p2"){ const p = snapPoint(wx, wy, e.id); e.x2 = p[0]; e.y2 = p[1];
+                           if (e.type === "dist" || e.type === "dim") attachEnd(e, "2"); }
   else if (name === "mid"){
     const mx=(e.x1+e.x2)/2, my=(e.y1+e.y2)/2, dx=e.x2-e.x1, dy=e.y2-e.y1, L=Math.hypot(dx,dy)||1;
     const nx=-dy/L, ny=dx/L;
     let cv = (wx-mx)*nx + (wy-my)*ny;                       // signed perpendicular offset
-    e.curve = $("chkSnap").checked ? Math.round(cv/GRID)*GRID : Math.round(cv*10)/10;
+    const g = gridStep();
+    e.curve = $("chkSnap").checked ? Math.round(cv/g)*g : Math.round(cv*10)/10;
   }
   else if (name === "vec"){
     const dx = wx - e.x, dy = wy - e.y;
@@ -639,10 +680,15 @@ function applyHandle(e, name, wx, wy){
   else if (name === "rad"){
     e.r = Math.max(10, Math.round(Math.hypot(wx - e.x, wy - e.y)));
   }
+  else if (name === "lab"){
+    const a = labelAnchor(e);
+    if (a){ e.ldx = Math.round(wx - a[0]); e.ldy = Math.round(wy - a[1]); }
+  }
 }
 
 /* ---------- render ---------- */
 function render(){
+  syncAttached();
   worldG.setAttribute("transform", `translate(${panX},${panY}) scale(${zoom})`);
 
   // background
@@ -656,7 +702,7 @@ function render(){
   // grid (dots)
   gridG.textContent = "";
   if ($("chkGrid").checked){
-    const g5 = GRID * 5;
+    const g5 = gridStep() * 5;
     const x0 = Math.floor((-panX/zoom)/g5)*g5, y0 = Math.floor((-panY/zoom)/g5)*g5;
     const x1 = (-panX + svg.clientWidth)/zoom, y1 = (-panY + svg.clientHeight)/zoom;
     let d = "";
@@ -692,9 +738,13 @@ function render(){
   if (sel){
     const hs = 5 / zoom;
     for (const [name, hx, hy] of handlePoints(sel)){
-      el("rect", {x:hx-hs, y:hy-hs, width:hs*2, height:hs*2, fill:"#a66c4c",
-                  stroke:"#855538", "stroke-width":1/zoom, "data-handle":name,
-                  style:"cursor:move"}, overG);
+      if (name === "lab")
+        el("circle", {cx:hx, cy:hy, r:hs*1.4, fill:"rgba(166,108,76,.18)", stroke:"#855538",
+                      "stroke-width":1/zoom, "data-handle":name, style:"cursor:move"}, overG);
+      else
+        el("rect", {x:hx-hs, y:hy-hs, width:hs*2, height:hs*2, fill:"#a66c4c",
+                    stroke:"#855538", "stroke-width":1/zoom, "data-handle":name,
+                    style:"cursor:move"}, overG);
     }
     // subtle marker on anchor
     const ax = sel.x !== undefined ? sel.x : sel.x1, ay = sel.y !== undefined ? sel.y : sel.y1;
@@ -729,6 +779,94 @@ function snapGeom(wx, wy, excl){
   return best;
 }
 function snapPoint(wx, wy, excl){ const g = snapGeom(wx, wy, excl); return g ? [g[0], g[1]] : [snap(wx), snap(wy)]; }
+
+/* ---------- attachment: loads & supports stick to beams ---------- */
+const ATTACHABLE = new Set(["force","moment","pin","roller","fixed","spring","node"]);
+function beamPoint(b, t){
+  // point at fraction t along the beam (quadratic curve if it sags)
+  if (b.curve){
+    const mx=(b.x1+b.x2)/2, my=(b.y1+b.y2)/2, dx=b.x2-b.x1, dy=b.y2-b.y1, L=Math.hypot(dx,dy)||1;
+    const cx=mx-dy/L*2*b.curve, cy=my+dx/L*2*b.curve;
+    const u = 1 - t;
+    return [u*u*b.x1 + 2*u*t*cx + t*t*b.x2, u*u*b.y1 + 2*u*t*cy + t*t*b.y2];
+  }
+  return [b.x1 + (b.x2-b.x1)*t, b.y1 + (b.y2-b.y1)*t];
+}
+function projectOnBeam(b, x, y){
+  // nearest fraction t (chord projection — close enough for gentle curves)
+  const dx=b.x2-b.x1, dy=b.y2-b.y1, L2 = dx*dx + dy*dy || 1;
+  let t = ((x-b.x1)*dx + (y-b.y1)*dy) / L2;
+  t = Math.max(0, Math.min(1, t));
+  const p = beamPoint(b, t);
+  return {t, x:p[0], y:p[1], d:Math.hypot(p[0]-x, p[1]-y)};
+}
+function nearestBeam(x, y, thr){
+  let best = null;
+  for (const b of state.elements){
+    if (b.type !== "beam") continue;
+    const p = projectOnBeam(b, x, y);
+    if (p.d < thr){ thr = p.d; best = {b, p}; }
+  }
+  return best;
+}
+function attachPoint(e){
+  if (!ATTACHABLE.has(e.type)) return;
+  const hit = nearestBeam(e.x, e.y, 14);
+  if (hit){ e.host = hit.b.id; e.ht = Math.round(hit.p.t*1000)/1000; e.x = hit.p.x; e.y = hit.p.y; }
+}
+function attachEnd(e, k){        // k = "1" | "2" — dist / dim endpoints
+  const hit = nearestBeam(e["x"+k], e["y"+k], 14);
+  if (hit){ e["host"+k] = hit.b.id; e["ht"+k] = Math.round(hit.p.t*1000)/1000;
+            e["x"+k] = hit.p.x; e["y"+k] = hit.p.y; }
+  else { delete e["host"+k]; delete e["ht"+k]; }
+}
+function maintainAttach(els){
+  // while elements are dragged/nudged: slide along the host beam, detach when
+  // pulled clear, re-attach when brought near a beam again
+  for (const e of els){
+    if (ATTACHABLE.has(e.type)){
+      if (e.host){
+        const b = state.elements.find(x => x.id === e.host && x.type === "beam");
+        const p = b && projectOnBeam(b, e.x, e.y);
+        if (p && p.d < 28) e.ht = Math.round(p.t*1000)/1000;
+        else { delete e.host; delete e.ht; }
+      } else attachPoint(e);
+    }
+    for (const k of ["1","2"]){
+      if (e["host"+k] === undefined) continue;
+      const b = state.elements.find(x => x.id === e["host"+k] && x.type === "beam");
+      const p = b && projectOnBeam(b, e["x"+k], e["y"+k]);
+      if (p && p.d < 28) e["ht"+k] = Math.round(p.t*1000)/1000;
+      else { delete e["host"+k]; delete e["ht"+k]; }
+    }
+  }
+}
+function syncAttached(){
+  // pin attached elements onto their host beams (runs before every draw)
+  const beams = {};
+  for (const e of state.elements) if (e.type === "beam") beams[e.id] = e;
+  for (const e of state.elements){
+    if (e.host){
+      const b = beams[e.host];
+      if (!b){ delete e.host; delete e.ht; }
+      else { const p = beamPoint(b, e.ht || 0); e.x = p[0]; e.y = p[1]; }
+    }
+    for (const k of ["1","2"]){
+      if (e["host"+k] === undefined) continue;
+      const b = beams[e["host"+k]];
+      if (!b){ delete e["host"+k]; delete e["ht"+k]; }
+      else { const p = beamPoint(b, e["ht"+k] || 0); e["x"+k] = p[0]; e["y"+k] = p[1]; }
+    }
+  }
+}
+function remapHosts(c, idMap){
+  // duplicated/pasted elements: keep attachments only within the copied set
+  for (const k of ["host","host1","host2"]){
+    if (c[k] === undefined) continue;
+    if (idMap[c[k]]) c[k] = idMap[c[k]];
+    else { delete c[k]; delete c["ht" + k.slice(4)]; }
+  }
+}
 function forceLenEff(e){          // drawn arrow length: from magnitude when to-scale, else free-drawn
   if (!toScale || !e.mag) return e.len;
   return Math.max(6, Math.abs(e.mag) * (state.forceScale || 1)) * (Math.sign(e.len) || 1);
@@ -738,11 +876,52 @@ function distH(e){                // drawn load heights: from intensity when to-
     return [Math.abs(e.mag1||0) * (state.forceScale||1), Math.abs(e.mag2||0) * (state.forceScale||1)];
   return [e.h1, e.h2];
 }
+function dimAuto(Lpx){            // blank dim label: real length in engineer mode, else px
+  if (engineerMode && state.scale && state.scale.ppu > 0)
+    return parseFloat((Lpx / state.scale.ppu).toFixed(3)) + " " + (state.scale.unit || "");
+  return Math.round(Lpx) + "";
+}
+function labelAnchor(e){
+  // default label position per type; the drawn label sits here plus the
+  // user's drag offset (e.ldx / e.ldy), so it follows the element around
+  switch(e.type){
+    case "force": {
+      const ux = Math.cos(rad(e.angle)), uy = -Math.sin(rad(e.angle)), len = forceLenEff(e);
+      if (e.resolve){
+        const s = e.flip ? 1 : -1;
+        const Cx = e.x + s*len*ux, Cy = e.y + s*len*uy;
+        return [Cx + s*ux*10, Cy + s*uy*10 + 4];
+      }
+      const tx = e.flip ? e.x : e.x - ux*len, ty = e.flip ? e.y : e.y - uy*len;
+      return [tx - ux*14 + (e.flip ? ux*(len+28) : 0),
+              ty - uy*14 + (e.flip ? uy*(len+28) : 0) + 5];
+    }
+    case "moment": return [e.x, e.y - e.r - 8];
+    case "dist": {
+      const dx = e.x2-e.x1, dy = e.y2-e.y1, L = Math.hypot(dx,dy) || 1;
+      const side = e.flip ? 1 : -1, px = -dy/L*side, py = dx/L*side;
+      const [H1, H2] = distH(e), hm = Math.max(H1, H2);
+      return [(e.x1+e.x2)/2 + px*(hm+14), (e.y1+e.y2)/2 + py*(hm+14) + 5];
+    }
+    case "dim": {
+      const dx = e.x2-e.x1, dy = e.y2-e.y1, L = Math.hypot(dx,dy) || 1;
+      const px = -dy/L, py = dx/L;
+      const f = (state.dimScale || 1) * (e.scale || 1);
+      return [(e.x1+e.x2)/2 + px*(e.off + 12*f), (e.y1+e.y2)/2 + py*(e.off + 12*f) + 4*f];
+    }
+  }
+  return null;
+}
+function labelPos(e){
+  const a = labelAnchor(e);
+  return a ? [a[0] + (e.ldx || 0), a[1] + (e.ldy || 0)] : null;
+}
 function syncScaleInputs(){
   if ($("scalePpu")) $("scalePpu").value = state.scale.ppu;
   if ($("scaleUnit")) $("scaleUnit").value = state.scale.unit;
   if ($("forceScale")) $("forceScale").value = state.forceScale != null ? state.forceScale : 6;
   if ($("dimScale")) $("dimScale").value = state.dimScale != null ? state.dimScale : 1;
+  if ($("gridReal")) $("gridReal").value = (state.scale && state.scale.grid) || 0.2;
 }
 function addLengthField(sel, body){
   const ppu = (state.scale && state.scale.ppu) || 1, unit = (state.scale && state.scale.unit) || "m";
@@ -762,17 +941,13 @@ function addLengthField(sel, body){
   inp.onchange = pushHistory;
   f.appendChild(inp); body.appendChild(f);
 }
-function updateEquil(){
-  const panel = $("equilPanel"); if (!panel) return;
-  if (!engineerMode){ panel.innerHTML = ""; return; }
+function sumLoads(RX, RY, excludeReactions){
+  // resultant of all applied loads about the real-coordinate point (RX, RY)
   const ppu = (state.scale && state.scale.ppu) || 1;
-  const lenU = (state.scale && state.scale.unit) || "m";
-  const ref = state.elements.find(e => ["pin","roller","fixed","spring"].includes(e.type))
-           || state.elements.find(e => e.type === "node");
-  const RX = (ref ? ref.x : 0) / ppu, RY = -(ref ? ref.y : 0) / ppu;
   const real = (x,y) => [x/ppu, -y/ppu];
   let Fx=0, Fy=0, M=0, forceU="kN", any=false;
   for (const e of state.elements){
+    if (excludeReactions && e.reaction) continue;
     if (e.type === "force" && e.mag){
       any = true; if (e.unit) forceU = e.unit;
       const dir = Math.sign(e.len) || 1;          // honour a negative length (arrow drawn reversed)
@@ -794,6 +969,17 @@ function updateEquil(){
       M += (px-RX)*fy - (py-RY)*fx;
     }
   }
+  return {Fx, Fy, M, forceU, any};
+}
+function updateEquil(){
+  const panel = $("equilPanel"); if (!panel) return;
+  if (!engineerMode){ panel.innerHTML = ""; return; }
+  const ppu = (state.scale && state.scale.ppu) || 1;
+  const lenU = (state.scale && state.scale.unit) || "m";
+  const ref = state.elements.find(e => ["pin","roller","fixed","spring"].includes(e.type))
+           || state.elements.find(e => e.type === "node");
+  const RX = (ref ? ref.x : 0) / ppu, RY = -(ref ? ref.y : 0) / ppu;
+  const {Fx, Fy, M, forceU, any} = sumLoads(RX, RY, false);
   const f = n => (Math.abs(n) < 1e-9 ? 0 : n).toFixed(2);
   const tol = 0.05, bal = any && Math.abs(Fx)<tol && Math.abs(Fy)<tol && Math.abs(M)<tol;
   panel.innerHTML =
@@ -802,17 +988,111 @@ function updateEquil(){
     `<div class="eqrow"><span>&Sigma;Fy</span><span>${f(Fy)} ${forceU}</span></div>` +
     `<div class="eqrow"><span>&Sigma;M</span><span>${f(M)} ${forceU}\u00b7${lenU}</span></div>` +
     (any ? `<div class="eqv ${bal?'ok':'bad'}">${bal?'Balanced':'Not balanced'}</div>` : '<div class="ref">enter magnitudes to check</div>') +
-    (any ? `<div class="ref">about ${ref ? (ref.type + (ref.label ? ' '+ref.label : '')) : 'origin'}</div>` : '');
+    (any ? `<div class="ref">about ${ref ? (ref.type + (ref.label ? ' '+ref.label : '')) : 'origin'}</div>` : '') +
+    (any ? '<button id="btnSolveR" style="width:100%;margin-top:8px" title="Compute support reactions for a statically determinate support set and add them as green arrows">Solve reactions</button>' : '');
+  const sb = $("btnSolveR"); if (sb) sb.onclick = solveReactions;
+}
+function solve3(A, b){
+  // 3x3 gaussian elimination with partial pivoting; null if singular
+  const M = A.map((r, i) => [...r, b[i]]);
+  for (let c = 0; c < 3; c++){
+    let p = c;
+    for (let r = c+1; r < 3; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r;
+    if (Math.abs(M[p][c]) < 1e-12) return null;
+    [M[c], M[p]] = [M[p], M[c]];
+    for (let r = 0; r < 3; r++){
+      if (r === c) continue;
+      const f = M[r][c] / M[c][c];
+      for (let k = c; k < 4; k++) M[r][k] -= f * M[c][k];
+    }
+  }
+  return [M[0][3]/M[0][0], M[1][3]/M[1][1], M[2][3]/M[2][2]];
+}
+function solveReactions(){
+  // build unknowns from the supports: pin = 2 components, roller/spring = 1
+  // along its axis, fixed = 2 components + a moment. Exactly 3 -> determinate.
+  const hint = m => { $("hint").textContent = m; };
+  const applied = sumLoads(0, 0, true);
+  if (!applied.any){ hint("Enter load magnitudes first (engineer-mode fields on forces / moments / UDLs)."); return; }
+  const ppu = (state.scale && state.scale.ppu) || 1;
+  const sup = state.elements.filter(e => ["pin","roller","fixed","spring"].includes(e.type));
+  if (!sup.length){ hint("Add supports (pin, roller, fixed\u2026) before solving reactions."); return; }
+  const unk = [];
+  sup.forEach((s, i) => {
+    const L = String.fromCharCode(65 + i);              // A, B, C\u2026
+    const px = s.x/ppu, py = -s.y/ppu;
+    if (s.type === "pin"){
+      unk.push({s, px, py, ux:1, uy:0, label:L+"x"}, {s, px, py, ux:0, uy:1, label:L+"y"});
+    } else if (s.type === "fixed"){
+      unk.push({s, px, py, ux:1, uy:0, label:L+"x"}, {s, px, py, ux:0, uy:1, label:L+"y"},
+               {s, px, py, mom:true, label:"M"+L});
+    } else {                                            // roller / spring: along its axis
+      const a = rad((s.angle || 0) + 90);
+      unk.push({s, px, py, ux:Math.cos(a), uy:Math.sin(a), label:L + ((s.angle||0) % 180 === 0 ? "y" : "")});
+    }
+  });
+  if (unk.length !== 3){
+    hint("Need a statically determinate support set (3 reaction components \u2014 e.g. pin + roller, or one fixed support). This arrangement has " + unk.length + ".");
+    return;
+  }
+  const A = [[], [], []];
+  for (const u of unk){
+    if (u.mom){ A[0].push(0); A[1].push(0); A[2].push(1); }
+    else { A[0].push(u.ux); A[1].push(u.uy); A[2].push(u.px*u.uy - u.py*u.ux); }
+  }
+  const x = solve3(A, [-applied.Fx, -applied.Fy, -applied.M]);
+  if (!x){ hint("Support arrangement is unstable (all reactions parallel or concurrent) \u2014 reactions can't be solved."); return; }
+  const round4 = v => parseFloat(v.toPrecision(4));
+  state.elements = state.elements.filter(e => !e.reaction);   // replace previous solve
+  const created = [];
+  unk.forEach((u, i) => {
+    const v = x[i];
+    if (Math.abs(v) < 1e-6) return;
+    if (u.mom){
+      const m = FACTORIES.moment(u.s.x, u.s.y); m.id = uid();
+      m.ccw = v > 0; m.mag = round4(Math.abs(v)); m.r = 34;
+      m.unit = applied.forceU + "\u00b7" + ((state.scale && state.scale.unit) || "m");
+      m.label = u.label; m.color = "#2e7d32"; m.reaction = true;
+      created.push(m);
+    } else {
+      const f = FACTORIES.force(u.s.x, u.s.y); f.id = uid();
+      let ang = Math.atan2(u.uy, u.ux) * 180 / Math.PI;
+      if (v < 0) ang += 180;
+      f.angle = Math.round(((ang % 360) + 360) % 360);
+      f.mag = round4(Math.abs(v)); f.unit = applied.forceU;
+      f.label = u.label; f.color = "#2e7d32"; f.len = 55; f.reaction = true;
+      if (u.s.host){ f.host = u.s.host; f.ht = u.s.ht; }    // follow the beam like its support
+      created.push(f);
+    }
+  });
+  state.elements.push(...created);
+  pushHistory(); renderProps(); render();
+  hint(created.length
+    ? "Reactions solved \u2014 added as green arrows (re-run Solve after changing loads)."
+    : "All reactions are zero for this loading.");
 }
 
 /* ---------- history / persistence ---------- */
 let history = [], hIndex = -1;
+let saveFlashTimer = null;
+function markSaved(ok){
+  const s = $("saveState"); if (!s) return;
+  if (ok){
+    s.textContent = "saved"; s.className = "on";
+    clearTimeout(saveFlashTimer); saveFlashTimer = setTimeout(() => { s.className = ""; }, 1200);
+  } else {
+    s.textContent = "autosave failed — too large for browser storage"; s.className = "err";
+  }
+}
 function pushHistory(){
+  const snapJson = JSON.stringify(state);
+  if (history[hIndex] === snapJson) return;   // no actual change: keep undo history clean
   history = history.slice(0, hIndex + 1);
-  history.push(JSON.stringify(state));
+  history.push(snapJson);
   if (history.length > 100) history.shift();
   hIndex = history.length - 1;
-  try { localStorage.setItem("fbd-autosave", history[hIndex]); } catch(_){}
+  try { localStorage.setItem("fbd-autosave", history[hIndex]); markSaved(true); }
+  catch(_){ markSaved(false); }
 }
 function migrate(st){
   // upgrade legacy udl/tri elements to the unified trapezoidal dist type
@@ -827,7 +1107,9 @@ function migrate(st){
 function restore(json){
   try { state = migrate(JSON.parse(json)); } catch(_){ return; }
   selectedIds = new Set();
+  rebuildCounters();
   if (!state.scale) state.scale = {ppu:50, unit:"m"};
+  if (state.scale.grid == null) state.scale.grid = 0.2;
   if (state.forceScale == null) state.forceScale = 6;
   if (state.dimScale == null) state.dimScale = 1;
   syncScaleInputs();
@@ -856,7 +1138,7 @@ const PROP_SCHEMAS = {
   fixed: [["angle","number","Angle °"], ["s","number","Size"], ["color","color","Colour"]],
   spring:[["angle","number","Angle °"], ["s","number","Length"], ["coils","number","Coils"],
           ["color","color","Colour"]],
-  dim:   [["label","text","Label (blank = px length)"], ["off","number","Offset"], ["scale","number","Scale"], ["color","color","Colour"]],
+  dim:   [["label","text","Label (blank = measured length)"], ["off","number","Offset"], ["scale","number","Scale"], ["color","color","Colour"]],
   text:  [["text","text","Text"], ["size","number","Size"], ["color","color","Colour"]],
 };
 const ENG_SCHEMAS = {   // extra fields shown only in engineer mode
@@ -874,6 +1156,16 @@ function renderProps(){
     d.textContent = selectedIds.size + " elements selected";
     d.style.marginBottom = "8px";
     body.appendChild(d);
+    // shared colour for the whole selection
+    const cf = document.createElement("div"); cf.className = "field";
+    const cl = document.createElement("label"); cl.textContent = "Colour (all selected)"; cf.appendChild(cl);
+    const ci = document.createElement("input"); ci.type = "color";
+    const first = getSelAll().find(e => e.color);
+    ci.value = (first && first.color) || "#222222";
+    ci.oninput = () => { for (const e of getSelAll()) if ("color" in e) e.color = ci.value; render(); };
+    ci.onchange = pushHistory;
+    cf.appendChild(ci); body.appendChild(cf);
+    addOrderRow(body);
     const del = document.createElement("button");
     del.className = "del"; del.textContent = "Delete selection";
     del.onclick = deleteSelected;
@@ -908,10 +1200,58 @@ function renderProps(){
   for (const spec of PROP_SCHEMAS[sel.type]) addField(spec);
   if (engineerMode && ENG_SCHEMAS[sel.type]) for (const spec of ENG_SCHEMAS[sel.type]) addField(spec);
   if (engineerMode && sel.x1 !== undefined && ["beam","dist","dim"].includes(sel.type)) addLengthField(sel, body);
+  if (sel.bind){
+    const f = document.createElement("div"); f.className = "field";
+    const l = document.createElement("label"); l.textContent = "Linked cell"; f.appendChild(l);
+    const row = document.createElement("div"); row.style.cssText = "display:flex;gap:6px;align-items:center";
+    const sp = document.createElement("span"); sp.textContent = sel.bind;
+    sp.style.cssText = "flex:1;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+    const x = document.createElement("button"); x.textContent = "✕"; x.title = "Unlink from the cell";
+    x.onclick = () => { const s = getSel(); if (!s) return; delete s.bind; pushHistory(); renderProps(); };
+    row.appendChild(sp); row.appendChild(x); f.appendChild(row); body.appendChild(f);
+  }
+  if (sel.host || sel.host1 || sel.host2){
+    const f = document.createElement("div"); f.className = "field";
+    const row = document.createElement("div"); row.style.cssText = "display:flex;gap:6px;align-items:center";
+    const sp = document.createElement("span"); sp.textContent = "Attached to beam";
+    sp.style.cssText = "flex:1;font-size:11px;color:var(--chrome-muted)";
+    const x = document.createElement("button"); x.textContent = "Detach"; x.title = "Stop following the beam";
+    x.onclick = () => { const s = getSel(); if (!s) return;
+      for (const k of ["host","ht","host1","ht1","host2","ht2"]) delete s[k];
+      pushHistory(); renderProps(); render(); };
+    row.appendChild(sp); row.appendChild(x); f.appendChild(row); body.appendChild(f);
+  }
+  if (sel.ldx || sel.ldy){
+    const rb = document.createElement("button");
+    rb.textContent = "Reset label position";
+    rb.style.cssText = "width:100%;margin-bottom:2px";
+    rb.onclick = () => { const s = getSel(); if (!s) return; delete s.ldx; delete s.ldy; pushHistory(); renderProps(); render(); };
+    body.appendChild(rb);
+  }
+  addOrderRow(body);
   const del = document.createElement("button");
   del.className = "del"; del.textContent = "Delete element";
   del.onclick = deleteSelected;
   body.appendChild(del);
+}
+function addOrderRow(body){
+  const row = document.createElement("div");
+  row.style.cssText = "display:flex;gap:6px;margin-top:4px";
+  const mk = (txt, front, title) => {
+    const b = document.createElement("button");
+    b.textContent = txt; b.title = title; b.style.flex = "1";
+    b.onclick = () => reorderSel(front);
+    return b;
+  };
+  row.appendChild(mk("To back", false, "Draw behind other elements ( [ )"));
+  row.appendChild(mk("To front", true, "Draw in front of other elements ( ] )"));
+  body.appendChild(row);
+}
+function reorderSel(front){
+  const sel = getSelAll(); if (!sel.length) return;
+  const rest = state.elements.filter(e => !selectedIds.has(e.id));
+  state.elements = front ? rest.concat(sel) : sel.concat(rest);
+  pushHistory(); render();
 }
 function deleteSelected(){
   if (!selectedIds.size) return;
@@ -921,19 +1261,67 @@ function deleteSelected(){
 }
 function duplicateSel(){
   const src = getSelAll(); if (!src.length) return;
+  const idMap = {};
   const copies = src.map(e => {
-    const c = JSON.parse(JSON.stringify(e)); c.id = uid();
+    const c = JSON.parse(JSON.stringify(e)); c.id = uid(); idMap[e.id] = c.id;
     for (const k of ["x","x1","x2"]) if (c[k] !== undefined) c[k] += 20;
     for (const k of ["y","y1","y2"]) if (c[k] !== undefined) c[k] += 20;
     return c;
   });
+  for (const c of copies) remapHosts(c, idMap);
   state.elements.push(...copies);
   selectedIds = new Set(copies.map(c => c.id));
   pushHistory(); renderProps(); render();
 }
+let elemClipboard = null;   // in-app fallback when the system clipboard is unavailable
+function copySelection(){
+  const sel = getSelAll(); if (!sel.length) return;
+  elemClipboard = JSON.stringify({fbdElements: sel});
+  try { navigator.clipboard.writeText(elemClipboard).catch(()=>{}); } catch(_){}
+  $("hint").textContent = "Copied " + sel.length + " element(s) — Ctrl+V to paste (here or in another FBD window).";
+}
+function pasteElements(json){
+  let obj; try { obj = JSON.parse(json); } catch(_){ return false; }
+  if (!obj || !Array.isArray(obj.fbdElements)) return false;
+  const idMap = {};
+  const copies = obj.fbdElements.filter(e => e && FACTORIES[e.type]).map(e => {
+    const c = JSON.parse(JSON.stringify(e)); c.id = uid(); idMap[e.id] = c.id;
+    for (const k of ["x","x1","x2"]) if (c[k] !== undefined) c[k] += 20;
+    for (const k of ["y","y1","y2"]) if (c[k] !== undefined) c[k] += 20;
+    return c;
+  });
+  if (!copies.length) return false;
+  for (const c of copies) remapHosts(c, idMap);
+  state.elements.push(...copies);
+  selectedIds = new Set(copies.map(c => c.id));
+  setTool("select");
+  pushHistory(); renderProps(); render();
+  $("hint").textContent = "Pasted " + copies.length + " element(s).";
+  return true;
+}
 function viewCenter(){
   const w = svg.clientWidth || 700, hh = svg.clientHeight || 400;
   return [ Math.round((-panX + w/2)/zoom), Math.round((-panY + hh/2)/zoom) ];
+}
+function fitView(){
+  // frame everything (elements + background) with a margin; used by the Fit
+  // button, the 0 shortcut, and after loading a diagram
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  if (state.elements.length){
+    try { const b = elemG.getBBox(); if (b.width || b.height){ x0 = b.x; y0 = b.y; x1 = b.x + b.width; y1 = b.y + b.height; } } catch(_){}
+  }
+  if (state.bg){
+    x0 = Math.min(x0, state.bg.x); y0 = Math.min(y0, state.bg.y);
+    x1 = Math.max(x1, state.bg.x + state.bg.w*state.bg.scale);
+    y1 = Math.max(y1, state.bg.y + state.bg.h*state.bg.scale);
+  }
+  if (!isFinite(x0) || !isFinite(x1)){ zoom = 1; panX = 60; panY = 60; render(); return; }
+  const w = svg.clientWidth || 700, h = svg.clientHeight || 400, m = 40;
+  zoom = Math.min(2.5, Math.max(0.15,
+         Math.min((w - 2*m) / Math.max(1, x1 - x0), (h - 2*m) / Math.max(1, y1 - y0))));
+  panX = (w - (x0 + x1) * zoom) / 2;
+  panY = (h - (y0 + y1) * zoom) / 2;
+  render();
 }
 function addTemplate(kind){
   const [bx, by] = viewCenter();
@@ -961,6 +1349,7 @@ function addTemplate(kind){
   }
   if (!els.length) return;
   state.elements.push(...els);
+  for (const e of els) attachPoint(e);      // template supports stick to their beams
   selectedIds = new Set(els.map(e => e.id));
   setTool("select");
   pushHistory(); renderProps(); render();
@@ -981,6 +1370,8 @@ svg.addEventListener("mousedown", ev => {
   // second click of a click-to-start / click-to-end placement: finalise
   if (drag && drag.sticky){
     drag = null;
+    const s = getSel();
+    if (s && (s.type === "dist" || s.type === "dim")){ attachEnd(s, "1"); attachEnd(s, "2"); }
     pushHistory(); setTool("select"); renderProps(); render();
     return;
   }
@@ -993,7 +1384,7 @@ svg.addEventListener("mousedown", ev => {
   // handle drag?
   const h = ev.target.closest("[data-handle]");
   if (h && getSel()){
-    drag = {mode:"handle", name:h.getAttribute("data-handle")};
+    drag = {mode:"handle", name:h.getAttribute("data-handle"), orig:JSON.stringify(getSel())};
     return;
   }
 
@@ -1024,6 +1415,7 @@ svg.addEventListener("mousedown", ev => {
   const sp = snapPoint(w.x, w.y);
   const e = make(sp[0], sp[1]);
   e.id = uid();
+  attachPoint(e);                       // loads & supports stick to a nearby beam
   state.elements.push(e);
   selectedIds = new Set([e.id]);
   if (TWO_POINT.has(e.type)) drag = {mode:"handle", name:"p2", placing:true};
@@ -1052,6 +1444,7 @@ svg.addEventListener("mousemove", ev => {
   if (drag.mode === "handle"){
     const sel = getSel(); if (!sel) return;
     applyHandle(sel, drag.name, w.x, w.y);
+    if (drag.name === "vec") $("coords").textContent = "∠ " + sel.angle + "°";
     render(); return;
   }
   if (drag.mode === "move"){
@@ -1061,6 +1454,7 @@ svg.addEventListener("mousemove", ev => {
       for (const k of ["x","x1","x2"]) if (o[k] !== undefined) e[k] = o[k] + dx;
       for (const k of ["y","y1","y2"]) if (o[k] !== undefined) e[k] = o[k] + dy;
     }
+    maintainAttach(getSelAll());
     render();
   }
 });
@@ -1076,6 +1470,32 @@ function boxSelect(d){
       ids.add(g.getAttribute("data-id"));
   }
   selectedIds = ids;
+}
+
+function cancelDrag(){
+  // Esc mid-drag: put things back the way they were
+  const d = drag; drag = null;
+  if (d.sticky || d.placing){
+    // abandon a half-placed element
+    state.elements = state.elements.filter(e => !selectedIds.has(e.id));
+    selectedIds = new Set(); setTool("select");
+  } else if (d.mode === "move" && d.origs){
+    for (const e of getSelAll()){
+      const o = d.origs[e.id]; if (!o) continue;
+      for (const k of Object.keys(e)) if (!(k in o)) delete e[k];   // drop keys the drag added (e.g. host)
+      Object.assign(e, o);
+    }
+  } else if (d.mode === "handle" && d.orig){
+    const sel = getSel();
+    if (sel){
+      const o = JSON.parse(d.orig);
+      for (const k of Object.keys(sel)) if (!(k in o)) delete sel[k];   // drop keys the drag added (e.g. ldx/ldy)
+      Object.assign(sel, o);
+    }
+  } else if (d.mode === "bg" && state.bg){
+    state.bg.x = d.bx; state.bg.y = d.by;
+  }
+  renderProps(); render();
 }
 
 window.addEventListener("mouseup", () => {
@@ -1095,6 +1515,7 @@ window.addEventListener("mouseup", () => {
       $("hint").textContent = "Move the mouse, then click to set the end point (Esc cancels).";
       return;
     }
+    if (sel && (sel.type === "dist" || sel.type === "dim")){ attachEnd(sel, "1"); attachEnd(sel, "2"); }
     setTool("select"); renderProps(); render();
   }
   pushHistory();
@@ -1117,31 +1538,34 @@ window.addEventListener("keydown", ev => {
   if (ev.key === " " && !inField){ spaceDown = true; svg.classList.add("panning"); ev.preventDefault(); return; }
   if (inField) return;
   if (ev.ctrlKey || ev.metaKey){
-    if (ev.key === "z"){ ev.preventDefault(); undo(); return; }
-    if (ev.key === "y"){ ev.preventDefault(); redo(); return; }
-    if (ev.key.toLowerCase() === "d"){ ev.preventDefault(); duplicateSel(); return; }
-    return; // let Ctrl+V paste fire the paste event (background image)
+    const k = ev.key.toLowerCase();
+    if (k === "z"){ ev.preventDefault(); ev.shiftKey ? redo() : undo(); return; }
+    if (k === "y"){ ev.preventDefault(); redo(); return; }
+    if (k === "d"){ ev.preventDefault(); duplicateSel(); return; }
+    if (k === "c" && selectedIds.size){ ev.preventDefault(); copySelection(); return; }
+    return; // let Ctrl+V paste fire the paste event (background image / elements)
   }
-  const keys = {v:"select", b:"beam", f:"force", m:"moment", u:"dist", t:"text"};
+  const keys = {v:"select", b:"beam", f:"force", m:"moment", u:"dist", t:"text",
+                p:"pin", r:"roller", x:"fixed", s:"spring"};
   if (keys[ev.key.toLowerCase()] && !ev.altKey){ setTool(keys[ev.key.toLowerCase()]); return; }
   if (ev.key === "Delete" || ev.key === "Backspace"){ deleteSelected(); return; }
+  if (ev.key === "0"){ fitView(); return; }
+  if (ev.key === "["){ reorderSel(false); return; }
+  if (ev.key === "]"){ reorderSel(true); return; }
   if (ev.key === "Escape"){
-    if (drag && drag.sticky){
-      // cancel a pending click-click placement
-      state.elements = state.elements.filter(e => !selectedIds.has(e.id));
-      drag = null;
-    }
+    if (drag){ cancelDrag(); return; }
     selectedIds = new Set(); setTool("select"); renderProps(); render(); return;
   }
   const all = getSelAll();
   if (all.length && ev.key.startsWith("Arrow")){
-    const d = ev.shiftKey ? 1 : GRID;
+    const d = ev.shiftKey ? 1 : gridStep();
     const dx = ev.key === "ArrowLeft" ? -d : ev.key === "ArrowRight" ? d : 0;
     const dy = ev.key === "ArrowUp" ? -d : ev.key === "ArrowDown" ? d : 0;
     for (const sel of all){
       for (const k of ["x","x1","x2"]) if (sel[k] !== undefined) sel[k] += dx;
       for (const k of ["y","y1","y2"]) if (sel[k] !== undefined) sel[k] += dy;
     }
+    maintainAttach(all);
     pushHistory(); render(); ev.preventDefault();
   }
 });
@@ -1155,8 +1579,18 @@ function setBgFromBlob(blob){
   rd.onload = () => {
     const img = new Image();
     img.onload = () => {
-      state.bg = { href: rd.result, x: 40, y: 40, w: img.naturalWidth, h: img.naturalHeight,
-                   scale: Math.min(1, 700 / img.naturalWidth),
+      // downscale huge images so autosave stays under the localStorage quota
+      let href = rd.result, w = img.naturalWidth, h = img.naturalHeight;
+      const MAX = 1600;
+      if (Math.max(w, h) > MAX){
+        const f = MAX / Math.max(w, h);
+        const c = document.createElement("canvas");
+        c.width = Math.round(w * f); c.height = Math.round(h * f);
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+        href = c.toDataURL("image/png"); w = c.width; h = c.height;
+      }
+      state.bg = { href, x: 40, y: 40, w, h,
+                   scale: Math.min(1, 700 / w),
                    opacity: $("bgOpacity").value / 100 };
       $("bgScale").value = $("bgScaleN").value = Math.round(state.bg.scale * 100);
       pushHistory(); render();
@@ -1169,6 +1603,10 @@ window.addEventListener("paste", ev => {
   for (const item of ev.clipboardData.items){
     if (item.type.startsWith("image/")){ setBgFromBlob(item.getAsFile()); ev.preventDefault(); return; }
   }
+  if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;   // typing in a field
+  const txt = ev.clipboardData.getData("text/plain");
+  if (txt && txt.indexOf('"fbdElements"') !== -1){ if (pasteElements(txt)) ev.preventDefault(); return; }
+  if (!txt && elemClipboard && pasteElements(elemClipboard)) ev.preventDefault();
 });
 svg.addEventListener("dragover", ev => ev.preventDefault());
 svg.addEventListener("drop", ev => {
@@ -1192,6 +1630,13 @@ $("btnBgMove").onclick = function(){ this.classList.toggle("active"); };
 $("btnBgRemove").onclick = () => { state.bg = null; pushHistory(); render(); };
 
 /* ---------- file ops ---------- */
+let diagName = "";                 // follows the opened file / workbook diagram name
+function exportName(ext){
+  const d = new Date(), p = n => String(n).padStart(2, "0");
+  const today = d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());  // local date
+  const base = (diagName || "fbd-" + today).replace(/[\\/:*?"<>|]+/g, "_").trim();
+  return (base || "fbd") + ext;
+}
 function download(name, blob){
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob); a.download = name;
@@ -1227,17 +1672,19 @@ function confirmClear(){
 }
 $("btnNew").onclick = async () => {
   if (state.elements.length && !(await confirmClear())) return;
-  state = {elements:[], bg:null}; selectedIds = new Set(); counters = {};
+  state = { elements: [], bg: null, scale: {ppu:50, unit:"m", grid:0.2}, forceScale: 6, dimScale: 1 };
+  selectedIds = new Set(); counters = {}; diagName = "";
+  syncScaleInputs();
   pushHistory(); renderProps(); render();
 };
 $("btnSave").onclick = () =>
-  saveBlob("fbd-diagram.json",
+  saveBlob(exportName(".json"),
            new Blob([JSON.stringify(state, null, 1)], {type:"application/json"}),
            [{description:"FBD diagram", accept:{"application/json":[".json"]}}]);
 $("btnOpen").onclick = () => $("fileJson").click();
 $("fileJson").onchange = ev => {
   const f = ev.target.files[0]; if (!f) return;
-  f.text().then(t => { restore(t); pushHistory(); });
+  f.text().then(t => { restore(t); diagName = f.name.replace(/\.json$/i, ""); fitView(); pushHistory(); });
   ev.target.value = "";
 };
 
@@ -1269,7 +1716,7 @@ function buildExportSvg(){
 $("btnSvg").onclick = () => {
   if (!state.elements.length) { $("hint").textContent = "Nothing to export yet."; return; }
   const {out} = buildExportSvg();
-  download("fbd.svg", new Blob([new XMLSerializer().serializeToString(out)], {type:"image/svg+xml"}));
+  download(exportName(".svg"), new Blob([new XMLSerializer().serializeToString(out)], {type:"image/svg+xml"}));
 };
 function rasterise(scale, cb){
   const {out, w, h} = buildExportSvg();
@@ -1283,9 +1730,10 @@ function rasterise(scale, cb){
   };
   img.onload = go; img.src = url; if (img.decode) img.decode().then(go).catch(() => {});
 }
+function expScale(){ return +$("expScale").value || 2; }
 $("btnCopyPng").onclick = () => {
   if (!state.elements.length) { $("hint").textContent = "Nothing to export yet."; return; }
-  rasterise(2, async b => {
+  rasterise(expScale(), async b => {
     try {
       await navigator.clipboard.write([new ClipboardItem({"image/png": b})]);
       $("hint").textContent = "Diagram copied to clipboard — paste into Word, email, etc.";
@@ -1294,20 +1742,7 @@ $("btnCopyPng").onclick = () => {
 };
 $("btnPng").onclick = () => {
   if (!state.elements.length) { $("hint").textContent = "Nothing to export yet."; return; }
-  const {out, w, h} = buildExportSvg();
-  const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(out)], {type:"image/svg+xml"}));
-  const img = new Image();
-  let done = false;
-  const draw = () => {                       // wait for full decode (incl. nested bg bitmap)
-    if (done) return; done = true;
-    const c = document.createElement("canvas");
-    c.width = Math.round(w*2); c.height = Math.round(h*2);
-    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-    c.toBlob(b => { download("fbd.png", b); URL.revokeObjectURL(url); }, "image/png");
-  };
-  img.onload = draw;                          // fallback path
-  img.src = url;
-  if (img.decode) img.decode().then(draw).catch(() => {});
+  rasterise(expScale(), b => download(exportName(".png"), b));
 };
 
 /* ---------- misc UI ---------- */
@@ -1321,6 +1756,8 @@ $("chkEngineer").onchange = e => {
 $("scalePpu").oninput = e => { state.scale.ppu = parseFloat(e.target.value) || 1; render(); };
 $("scaleUnit").oninput = e => { state.scale.unit = e.target.value || "m"; render(); };
 $("scalePpu").onchange = $("scaleUnit").onchange = pushHistory;
+$("gridReal").oninput = e => { const v = parseFloat(e.target.value); if (v > 0){ state.scale.grid = v; render(); } };
+$("gridReal").onchange = pushHistory;
 $("forceScale").oninput = e => { state.forceScale = parseFloat(e.target.value) || 1; render(); };
 $("forceScale").onchange = pushHistory;
 $("chkToScale").onchange = e => { toScale = e.target.checked; try { localStorage.setItem("fbd-toscale", toScale?"1":"0"); } catch(_){}; render(); };
@@ -1328,6 +1765,11 @@ $("dimScale").oninput = e => { state.dimScale = parseFloat(e.target.value) || 1;
 $("dimScale").onchange = pushHistory;
 $("btnUndo").onclick = undo;
 $("btnRedo").onclick = redo;
+$("btnFit").onclick = fitView;
+$("gridSize").oninput = e => {
+  const v = parseFloat(e.target.value);
+  if (v >= 2){ GRID = v; try { localStorage.setItem("fbd-grid", String(v)); } catch(_){} render(); }
+};
 $("btnHelp").onclick = () => $("helpDlg").showModal();
 window.addEventListener("resize", render);
 
@@ -1349,15 +1791,18 @@ window.addEventListener("resize", render);
     state.elements = [b, p, r, u, f, d];
   }
   if (!state.scale) state.scale = {ppu:50, unit:"m"};
+  if (state.scale.grid == null) state.scale.grid = 0.2;
   if (state.forceScale == null) state.forceScale = 6;
   if (state.dimScale == null) state.dimScale = 1;
   try { engineerMode = localStorage.getItem("fbd-eng") === "1"; } catch(_){}
   try { toScale = localStorage.getItem("fbd-toscale") === "1"; } catch(_){}
+  try { const gv = parseFloat(localStorage.getItem("fbd-grid")); if (gv >= 2){ GRID = gv; $("gridSize").value = gv; } } catch(_){}
   $("chkEngineer").checked = engineerMode;
   if ($("chkToScale")) $("chkToScale").checked = toScale;
   document.body.classList.toggle("eng", engineerMode);
   syncScaleInputs();
-  pushHistory(); render();
+  rebuildCounters();
+  pushHistory(); render(); fitView();
 })();
 </script>
 
@@ -1379,9 +1824,10 @@ window.addEventListener("resize", render);
   Office.onReady(info => {
     if (!info || info.host !== Office.HostType.Excel) return;
     if (grp) grp.style.display = "";
-    document.getElementById("btnXlInsert").onclick = insertToSheet;
-    document.getElementById("btnXlPull").onclick   = pullCells;
-    document.getElementById("btnXlBook").onclick   = () => { ensureBookDlg(); openBook(); };
+    document.getElementById("btnXlInsert").onclick  = insertToSheet;
+    document.getElementById("btnXlPull").onclick    = pullCells;
+    document.getElementById("btnXlRefresh").onclick = refreshBound;
+    document.getElementById("btnXlBook").onclick    = () => { ensureBookDlg(); openBook(); };
     // migrate a legacy single-slot diagram into the named library
     const lib = getLib();
     const legacy = S().get("fbd-diagram");
@@ -1392,7 +1838,7 @@ window.addEventListener("resize", render);
     }
     // auto-load the last-used diagram
     const last = S().get("fbd-last"), lib2 = getLib();
-    if (last && lib2[last]){ restore(lib2[last]); setStatus('Loaded "' + last + '" from the workbook.'); return; }
+    if (last && lib2[last]){ restore(lib2[last]); diagName = last; fitView(); setStatus('Loaded "' + last + '" from the workbook.'); return; }
     setStatus("Connected to Excel — draw, then Insert / Pull / Book…");
   });
 
@@ -1436,13 +1882,13 @@ window.addEventListener("resize", render);
     name = (name || "").trim();
     if (!name){ setStatus("Type a name first."); return; }
     const lib = getLib(); const existed = name in lib;
-    lib[name] = JSON.stringify(state); setLib(lib); S().set("fbd-last", name);
+    lib[name] = JSON.stringify(state); setLib(lib); S().set("fbd-last", name); diagName = name;
     try { await persist(); setStatus((existed ? 'Updated "' : 'Saved "') + name + '" in the workbook.'); refreshBookUI(); }
     catch(err){ setStatus("Save failed: " + (err && err.message || err)); }
   }
   async function loadFromBook(name){
     const lib = getLib(); if (!lib[name]){ setStatus("No diagram named " + name); return; }
-    restore(lib[name]); S().set("fbd-last", name);
+    restore(lib[name]); diagName = name; fitView(); S().set("fbd-last", name);
     try { await persist(); } catch(_){}
     setStatus('Loaded "' + name + '".');
     const dlg = document.getElementById("bookDlg"); if (dlg) dlg.close();
@@ -1474,41 +1920,123 @@ window.addEventListener("resize", render);
     });
   }
   async function insertToSheet(){
+    if (!Office.context.requirements.isSetSupported("ExcelApi", "1.9")){
+      setStatus("This Excel version can't insert images (needs ExcelApi 1.9) — use Copy PNG and paste instead.");
+      return;
+    }
     try{
       const png = await pngBase64(2);
+      const shapeName = "FBD_" + (diagName || "diagram").replace(/[^\w\- ]+/g, "_");
+      let updated = false;
       await Excel.run(async ctx => {
         const sheet = ctx.workbook.worksheets.getActiveWorksheet();
-        const shape = sheet.shapes.addImage(png.b64);
-        shape.name = "FBD_" + Date.now();
-        const maxW = 500, s = png.w > maxW ? maxW / png.w : 1;
-        shape.width = png.w * s; shape.height = png.h * s;
+        const shapes = sheet.shapes;
+        shapes.load("items/name,items/left,items/top,items/width");
         const sel = ctx.workbook.getSelectedRange(); sel.load("left, top");
         await ctx.sync();
-        shape.left = sel.left; shape.top = sel.top;
+        // update in place: same diagram already on this sheet -> keep its spot and size
+        const old = shapes.items.find(s => s.name === shapeName);
+        let left = sel.left, top = sel.top, keepW = null;
+        if (old){ left = old.left; top = old.top; keepW = old.width; old.delete(); updated = true; }
+        const shape = sheet.shapes.addImage(png.b64);
+        shape.name = shapeName;
+        const maxW = 500, s = png.w > maxW ? maxW / png.w : 1;
+        const w = keepW || png.w * s;
+        shape.width = w; shape.height = w * png.h / png.w;
+        shape.left = left; shape.top = top;
         await ctx.sync();
       });
-      setStatus("Diagram inserted at the selected cell — drag to fine-tune.");
+      setStatus(updated
+        ? 'Updated the existing "' + shapeName + '" image in place.'
+        : "Diagram inserted at the selected cell — Insert again after edits to update it in place.");
     } catch(err){ setStatus("Insert failed: " + (err && err.message || err)); }
+  }
+  // tame raw Excel floats (15.199999999998 -> 15.2) without losing real precision
+  function fmtVal(v){
+    const n = Number(v);
+    return (typeof v !== "boolean" && v !== "" && Number.isFinite(n)) ? String(parseFloat(n.toPrecision(6))) : String(v);
+  }
+  function applyPulled(e, raw){
+    // shared by Pull cells and Refresh: label always, magnitude in engineer mode
+    const n = Number(raw);
+    if ("label" in e) e.label = fmtVal(raw);
+    else if (e.type === "text") e.text = fmtVal(raw);
+    if (engineerMode && typeof raw !== "boolean" && Number.isFinite(n)){
+      if ("mag" in e) e.mag = parseFloat(n.toPrecision(6));
+      else if (e.type === "dist") e.mag1 = e.mag2 = parseFloat(n.toPrecision(6));
+    }
   }
   async function pullCells(){
     try{
-      const vals = [];
+      const pulled = [];                       // {v, addr} per non-empty cell
       await Excel.run(async ctx => {
-        const rng = ctx.workbook.getSelectedRange(); rng.load("values");
+        const rng = ctx.workbook.getSelectedRange();
+        rng.load("values, rowCount, columnCount");
         await ctx.sync();
-        for (const row of rng.values) for (const v of row)
-          if (v !== "" && v !== null && v !== undefined) vals.push(String(v));
+        if (rng.rowCount * rng.columnCount > 400) throw new Error("Selection too large — select up to 400 cells.");
+        const cells = [];
+        for (let r = 0; r < rng.rowCount; r++) for (let c = 0; c < rng.columnCount; c++){
+          const v = rng.values[r][c];
+          if (v === "" || v === null || v === undefined) continue;
+          const cell = rng.getCell(r, c); cell.load("address");
+          cells.push({v, cell});
+        }
+        await ctx.sync();
+        for (const it of cells) pulled.push({v: it.v, addr: it.cell.address});
       });
-      if (!vals.length){ setStatus("Select one or more non-empty cells in Excel first."); return; }
+      if (!pulled.length){ setStatus("Select one or more non-empty cells in Excel first."); return; }
       const sel = (typeof getSelAll === "function") ? getSelAll() : [];
-      if (vals.length === 1 && sel.length === 1 && ("label" in sel[0])){
-        sel[0].label = vals[0]; pushHistory(); render(); setStatus('Set label to "' + vals[0] + '".'); return;
+      if (pulled.length === 1 && sel.length === 1 && ("label" in sel[0] || sel[0].type === "text")){
+        const e = sel[0];
+        applyPulled(e, pulled[0].v);
+        e.bind = pulled[0].addr;               // stays linked: Refresh re-pulls it
+        pushHistory(); renderProps(); render();
+        setStatus("Linked to " + e.bind + ' — value "' + fmtVal(pulled[0].v) + '" applied. Use Refresh to re-pull.');
+        return;
       }
       let y = 70;
-      for (const v of vals){ const t = FACTORIES.text(130, y); t.id = uid(); t.text = v; state.elements.push(t); y += 26; }
+      for (const it of pulled){
+        const t = FACTORIES.text(130, y); t.id = uid();
+        t.text = fmtVal(it.v); t.bind = it.addr;
+        state.elements.push(t); y += 26;
+      }
       pushHistory(); render();
-      setStatus("Added " + vals.length + " label(s) from Excel — drag into place.");
+      setStatus("Added " + pulled.length + " linked label(s) from Excel — drag into place; Refresh re-pulls them.");
     } catch(err){ setStatus("Pull failed: " + (err && err.message || err)); }
+  }
+  async function refreshBound(){
+    const bound = state.elements.filter(e => e.bind);
+    if (!bound.length){ setStatus("No cell-linked labels yet — select an element and one cell, then Pull cells."); return; }
+    try{
+      let n = 0, missing = 0;
+      await Excel.run(async ctx => {
+        // pass 1: resolve sheets tolerantly (renamed/deleted sheets must not sink the batch)
+        const parsed = [], sheets = {};
+        for (const e of bound){
+          const m = /^(?:'((?:[^']|'')+)'|([^!]+))!(.+)$/.exec(e.bind);
+          if (!m){ missing++; continue; }
+          const name = (m[1] || m[2]).replace(/''/g, "'");
+          if (!sheets[name]) sheets[name] = ctx.workbook.worksheets.getItemOrNullObject(name);
+          parsed.push({e, name, ref: m[3]});
+        }
+        await ctx.sync();
+        // pass 2: read the linked cells that still exist
+        const jobs = [];
+        for (const p of parsed){
+          if (sheets[p.name].isNullObject){ missing++; continue; }
+          const rng = sheets[p.name].getRange(p.ref); rng.load("values");
+          jobs.push({e: p.e, rng});
+        }
+        await ctx.sync();
+        for (const {e, rng} of jobs){
+          const v = rng.values[0][0];
+          if (v === "" || v === null || v === undefined) continue;
+          applyPulled(e, v); n++;
+        }
+      });
+      pushHistory(); renderProps(); render();
+      setStatus("Refreshed " + n + " linked label(s)" + (missing ? " (" + missing + " link(s) not found)" : "") + ".");
+    } catch(err){ setStatus("Refresh failed: " + (err && err.message || err)); }
   }
 })();
 </script>

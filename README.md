@@ -53,6 +53,46 @@ A **FBD Sketcher** button appears on the Home ribbon — click it to open the pa
 
 The status line at the bottom of the panel confirms each action (and shows any error).
 
+### New in v1.2
+
+- **Attachments** — loads and supports placed on a beam stick to it and follow
+  when the beam moves or reshapes (UDL / dimension endpoints too). Drag an
+  element clear of the beam to detach it, or use Detach in the properties panel.
+- **Solve reactions** — in engineer mode the equilibrium panel gains a button
+  that solves support reactions for any statically determinate support set
+  (pin + roller, a single fixed support, etc.) and adds them as green labelled
+  arrows. Re-run after changing loads; the equilibrium check then reads Balanced.
+- **Linked cells** — Pull cells now remembers which cell each value came from.
+  The **Refresh** button re-pulls every linked label (and magnitude, in engineer
+  mode) so diagrams track the calc sheet. Unlink from the properties panel.
+- **Update-in-place inserts** — Insert to sheet names the image after the
+  workbook diagram; inserting again replaces that image where it sits, keeping
+  any resizing you did. No more stale duplicates.
+- **Real-unit grid** — in engineer mode, grid/snap spacing is set in drawing
+  units (e.g. 0.2 m) next to the scale, so geometry lands on round dimensions.
+
+### Handy since the v1.1 update
+
+- **Draggable labels** — select a force / moment / UDL / dimension and drag the
+  round handle to move its label clear of overlapping text; the label keeps
+  following the element, and "Reset label position" in the properties panel
+  puts it back.
+- **Fit** button (or press `0`) zooms to frame the whole diagram — also happens
+  automatically when a diagram is opened or loaded from the workbook.
+- **P R X S** place pin / roller / fixed / spring supports from the keyboard.
+- **Ctrl+C / Ctrl+V** copies and pastes selected elements — including between two
+  FBD windows. `Ctrl+Shift+Z` redoes; `Esc` now cancels a drag in progress.
+- **`[` / `]`** (or the To back / To front buttons) change drawing order.
+- With several elements selected, the properties panel offers a shared **colour**.
+- **Export resolution** picker (1× / 2× / 4×) next to the export buttons; exported
+  files are named after the workbook diagram (or dated) instead of `fbd.png`.
+- In engineer mode, a blank dimension label shows the **real scaled length**
+  (e.g. `2.5 m`), and **Pull cells** onto a selected force/moment/UDL sets its
+  magnitude as well as the label, so the equilibrium check tracks the sheet.
+- Grid spacing is adjustable in the header; a "saved" tick in the footer confirms
+  each autosave (and warns if the diagram gets too big for browser storage —
+  pasted backgrounds are now auto-downscaled to keep that from happening).
+
 ---
 
 ## Updating later
