@@ -71,14 +71,15 @@
   #palette .sect:first-child{margin-top:2px;}
 
   #canvaswrap{flex:1; position:relative; min-width:0; background:#fff;}
-  #svg{position:absolute; inset:0; width:100%; height:100%; display:block; cursor:crosshair;}
+  #svg{position:absolute; inset:0; width:100%; height:100%; display:block; cursor:crosshair; touch-action:none;}
   #svg.tool-select{cursor:default;}
   #svg.panning{cursor:grab;}
 
   #props{width:212px; background:var(--chrome-bg); border-left:1px solid var(--chrome-line-strong);
          padding:12px; overflow-y:auto;}
   #props h3{font-family:var(--font-mono); font-size:10px; text-transform:uppercase; letter-spacing:.18em;
-            color:var(--chrome-muted); margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid var(--chrome-line);}
+            color:var(--chrome-muted); margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid var(--chrome-line);
+            display:flex; align-items:center; justify-content:space-between;}
   #props .field{margin-bottom:10px;}
   #props .field label{display:block; color:var(--chrome-muted); font-size:11px; margin-bottom:3px;}
   #props input[type=text], #props input[type=number]{width:100%; background:var(--chrome-raised); color:var(--chrome-text);
@@ -97,6 +98,44 @@
   #saveState.on{opacity:1;}
   #saveState.err{color:var(--chrome-danger); opacity:1;}
 
+  /* ---- dropdown menus ---- */
+  .menuwrap{position:relative; display:inline-flex;}
+  .menu{position:absolute; top:calc(100% + 4px); left:0; z-index:60; background:var(--chrome-raised-2);
+        border:1px solid var(--chrome-line-strong); border-radius:6px; padding:6px;
+        display:flex; flex-direction:column; gap:3px; min-width:172px; box-shadow:0 10px 26px rgba(0,0,0,.4);}
+  .menu[hidden]{display:none;}
+  .menu button{text-align:left; border-color:transparent; background:transparent; width:100%;}
+  .menu button:hover{background:var(--chrome-hover); border-color:var(--chrome-line);}
+  .menu .menurow{display:flex; align-items:center; gap:6px; padding:3px 4px; color:var(--chrome-muted);
+                 font-family:var(--font-mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase;}
+
+  /* ---- button states / footer zoom ---- */
+  button:disabled{opacity:.35; cursor:default;}
+  button:disabled:hover{border-color:var(--chrome-line-strong); background:var(--chrome-raised);}
+  button.danger{color:var(--chrome-danger); border-color:var(--chrome-danger-line);}
+  button.danger:hover{border-color:var(--chrome-danger);}
+  #zoomInd{background:none; border:none; padding:0; font-family:var(--font-mono); font-size:10px;
+           letter-spacing:.1em; color:var(--chrome-muted); cursor:pointer;}
+  #zoomInd:hover{color:var(--chrome-text); text-decoration:underline; background:none;}
+
+  /* ---- collapsible properties panel ---- */
+  #props h3 button{padding:1px 7px; font-size:11px; margin-left:8px; flex:none;}
+  body.noprops #props{display:none;}
+  #btnPropsShow{position:absolute; top:8px; right:0; z-index:10; display:none;
+                border-radius:4px 0 0 4px; border-right:none; padding:6px 7px;}
+  body.noprops #btnPropsShow{display:block;}
+
+  /* ---- narrow pane: icon-only palette, compact brand ---- */
+  #palette .plabel{flex:1; text-align:left;}
+  #palette .pkey{color:var(--chrome-muted); font-family:var(--font-mono); font-size:9px;}
+  @media (max-width:560px){
+    .brand .wm{display:none;}
+    #palette{width:46px; padding:8px 5px;}
+    #palette .plabel, #palette .pkey{display:none;}
+    #palette button{justify-content:center; padding:6px 4px;}
+    #palette .sect{font-size:0; border-top:1px solid var(--chrome-line); margin:8px 3px 2px;}
+  }
+
   dialog{background:var(--chrome-bg); color:var(--chrome-text); border:1px solid var(--chrome-line-strong); border-radius:6px;
          padding:22px 24px; max-width:480px; box-shadow:0 12px 32px rgba(25,25,25,.28);}
   dialog::backdrop{background:var(--backdrop);}
@@ -105,9 +144,10 @@
   dialog td{padding:3px 10px 3px 0; color:var(--chrome-muted);}
   dialog td:first-child{color:var(--chrome-text); font-family:var(--font-mono); font-size:11px; letter-spacing:.04em; white-space:nowrap;}
   dialog button{margin-top:16px;}
-  /* ---- Engineer mode (opt-in) ---- */
-  .eng-only{display:none;}
-  body.eng span.eng-only{display:flex;}
+  /* ---- Engineer mode (opt-in) ----
+     NB: must out-rank `header .grp{display:flex}` or the group shows always */
+  header .grp.eng-only{display:none;}
+  body.eng header .grp.eng-only{display:flex;}
   #equilPanel{display:none; margin-top:14px; padding-top:10px; border-top:1px solid var(--chrome-line);
               font-family:var(--font-mono); font-size:11px; letter-spacing:.03em; line-height:1.75;}
   body.eng #equilPanel{display:block;}
@@ -130,32 +170,33 @@
     <span class="tool">FBD Sketcher</span>
   </span>
   <span class="grp">
-    <button id="btnNew" title="Clear the canvas">New</button>
-    <button id="btnOpen" title="Open a saved .json diagram">Open</button>
-    <button id="btnSave" title="Save diagram as .json">Save</button>
-  </span>
-  <span class="grp">
-    <button id="btnBg" title="Load a background image (or just paste / drag-drop one)">BG image</button>
-    <label class="chk" title="Background opacity %">op <input type="range" id="bgOpacity" min="5" max="100" value="45"><input type="number" id="bgOpacityN" min="5" max="100" value="45"></label>
-    <label class="chk" title="Background scale %">sc <input type="range" id="bgScale" min="10" max="300" value="100"><input type="number" id="bgScaleN" min="1" max="1000" value="100"></label>
-    <button id="btnBgMove" title="Toggle: drag to reposition the background">Move BG</button>
-    <button id="btnBgRemove" title="Remove background image">✕</button>
+    <span class="menuwrap">
+      <button id="btnFileMenu" title="New / open / save">File ▾</button>
+      <div class="menu" id="fileMenu" hidden>
+        <button id="btnNew" title="Clear the canvas">New</button>
+        <button id="btnOpen" title="Open a saved .json diagram">Open…</button>
+        <button id="btnSave" title="Save diagram as .json">Save…</button>
+      </div>
+    </span>
+    <span class="menuwrap">
+      <button id="btnExpMenu" title="Export or copy the diagram">Export ▾</button>
+      <div class="menu" id="expMenu" hidden>
+        <button id="btnSvg" title="Export vector SVG">SVG…</button>
+        <button id="btnPng" title="Export PNG at the chosen resolution">PNG…</button>
+        <button id="btnCopyPng" title="Copy the diagram to the clipboard as a PNG">Copy PNG</button>
+        <div class="menurow">res <select id="expScale" title="PNG export / copy resolution"><option value="1">1×</option><option value="2" selected>2×</option><option value="4">4×</option></select></div>
+        <label class="chk menurow"><input type="checkbox" id="chkExpBg" checked> incl. background</label>
+        <label class="chk menurow" title="Export with a transparent background instead of white"><input type="checkbox" id="chkExpTransparent"> transparent</label>
+      </div>
+    </span>
   </span>
   <span class="grp">
     <label class="chk"><input type="checkbox" id="chkGrid" checked> grid</label>
     <input type="number" id="gridSize" min="2" max="200" value="10" style="width:44px" title="Grid / snap spacing (world px)">
     <label class="chk"><input type="checkbox" id="chkSnap" checked> snap</label>
     <button id="btnFit" title="Zoom to fit the whole diagram (0)">Fit</button>
-    <button id="btnUndo" title="Ctrl+Z">↩</button>
-    <button id="btnRedo" title="Ctrl+Y / Ctrl+Shift+Z">↪</button>
-  </span>
-  <span class="grp">
-    <button id="btnSvg" title="Export vector SVG">Export SVG</button>
-    <button id="btnPng" title="Export PNG at the chosen resolution">Export PNG</button>
-    <button id="btnCopyPng" title="Copy the diagram to the clipboard as a PNG">Copy PNG</button>
-    <select id="expScale" title="PNG export / copy resolution"><option value="1">1×</option><option value="2" selected>2×</option><option value="4">4×</option></select>
-    <label class="chk"><input type="checkbox" id="chkExpBg" checked> incl. BG</label>
-    <label class="chk" title="Export with a transparent background instead of white"><input type="checkbox" id="chkExpTransparent"> transparent</label>
+    <button id="btnUndo" title="Undo (Ctrl+Z)">↩</button>
+    <button id="btnRedo" title="Redo (Ctrl+Y / Ctrl+Shift+Z)">↪</button>
   </span>
   <span class="grp" id="excelGroup" style="display:none">
     <button id="btnXlInsert" title="Insert the diagram into the worksheet — replaces the previous image of this diagram if one exists">Insert to sheet</button>
@@ -186,15 +227,17 @@
         <g id="gridlayer"></g>
         <g id="elements"></g>
         <g id="overlay"></g>
+        <g id="ghostlayer"></g>
       </g>
     </svg>
+    <button id="btnPropsShow" title="Show the properties panel">«</button>
   </div>
-  <aside id="props"><h3>Properties</h3><div id="propBody" class="empty">Nothing selected</div>
+  <aside id="props"><h3>Properties <button id="btnPropsHide" title="Collapse this panel">»</button></h3><div id="propBody" class="empty">Nothing selected</div>
     <div id="equilPanel"></div>
   </aside>
 </div>
 
-<footer><span class="hint" id="hint">Pick a tool, click (or drag) on the canvas. Paste an image any time to use it as a background.</span><span id="saveState"></span><span id="coords"></span></footer>
+<footer><span class="hint" id="hint">Pick a tool, click (or drag) on the canvas. Paste an image any time to use it as a background.</span><span id="saveState"></span><button id="zoomInd" title="Reset zoom to 100%"></button><span id="coords"></span></footer>
 
 <dialog id="helpDlg">
   <h2>Shortcuts</h2>
@@ -223,7 +266,7 @@
   <p style="color:var(--chrome-muted);margin-bottom:2px">This removes everything on the canvas. You can still undo with Ctrl+Z.</p>
   <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
     <button id="confirmNo">Cancel</button>
-    <button id="confirmYes">Clear</button>
+    <button id="confirmYes" class="danger">Clear</button>
   </div>
 </dialog>
 
@@ -244,7 +287,22 @@
 const SVGNS = "http://www.w3.org/2000/svg";
 const $ = id => document.getElementById(id);
 const svg = $("svg"), worldG = $("world"), bgG = $("bglayer"),
-      gridG = $("gridlayer"), elemG = $("elements"), overG = $("overlay");
+      gridG = $("gridlayer"), elemG = $("elements"), overG = $("overlay"),
+      ghostG = $("ghostlayer");
+
+/* status line: baseHint = persistent tool instruction, flash = transient feedback
+   that reverts to the instruction instead of erasing it */
+let hintBase = "", hintTimer = null;
+function baseHint(m){
+  hintBase = m;
+  clearTimeout(hintTimer); hintTimer = null;
+  $("hint").textContent = m;
+}
+function flash(m, ms){
+  $("hint").textContent = m;
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(() => { hintTimer = null; $("hint").textContent = hintBase; }, ms || 2600);
+}
 
 let GRID = 10;                   // snap grid, world units (adjustable in the header)
 let zoom = 1, panX = 60, panY = 60;
@@ -252,6 +310,7 @@ let zoom = 1, panX = 60, panY = 60;
 let state = { elements: [], bg: null, scale: {ppu:50, unit:"m"}, forceScale: 6, dimScale: 1 };  // dimScale: dimension text/arrow size multiplier
 let selectedIds = new Set();             // multi-selection
 let tool = "select";
+let bgMove = false;         // "move background" mode (toggled in the canvas panel)
 let engineerMode = false;   // opt-in advanced features
 let toScale = false;        // draw forces/loads to scale from magnitudes
 let counters = {};               // auto-label counters per prefix
@@ -341,7 +400,9 @@ function iconFor(name){
     case "beam":   P("M2 9 L20 9", {"stroke-width":3}); break;
     case "node":   el("circle",{cx:11,cy:9,r:3,fill:"currentColor",stroke:"none"},g); break;
     case "force":  P("M11 2 L11 12"); P("M7 10 L11 16 L15 10", {fill:"currentColor",stroke:"none"}); break;
-    case "moment": P("M16 5 A7 7 0 1 1 15 13"); P("M13 10 L16 15 L18 10",{fill:"currentColor",stroke:"none"}); break;
+    case "moment": P("M14.9 12.9 A5.5 5.5 0 1 0 7.1 12.9");
+                   P("M9.5 15.3 L8.5 11.6 L5.8 14.2 Z",{fill:"currentColor",stroke:"none"});
+                   el("circle",{cx:11,cy:9,r:1.3,fill:"currentColor",stroke:"none"},g); break;
     case "dist":   P("M3 4 L19 8"); P("M5 4 L5 12 M11 6 L11 12 M17 8 L17 12"); P("M3 14 L19 14"); break;
     case "pin":    P("M11 3 L6 12 L16 12 Z"); P("M4 15 L18 15"); break;
     case "roller": P("M11 3 L6 10 L16 10 Z"); el("circle",{cx:8,cy:13,r:1.6},g); el("circle",{cx:14,cy:13,r:1.6},g); break;
@@ -349,6 +410,9 @@ function iconFor(name){
     case "spring": P("M11 2 L11 4 L7 5 L15 7 L7 9 L15 11 L11 12 L11 14"); P("M5 16 L17 16"); break;
     case "dim":    P("M3 9 L19 9"); P("M3 5 L3 13 M19 5 L19 13"); P("M3 9 L7 7 M3 9 L7 11 M19 9 L15 7 M19 9 L15 11"); break;
     case "text":   el("text",{x:11,y:14,fill:"currentColor","font-size":14,"text-anchor":"middle","font-family":"serif","font-style":"italic",stroke:"none"},g).textContent="T"; break;
+    case "tmpl:ssb":    P("M3 6 L19 6",{"stroke-width":2}); P("M5 6 L3 11 L7 11 Z"); P("M17 6 L15 11 L19 11 Z"); P("M2 13 L8 13 M14 13 L20 13"); break;
+    case "tmpl:cant":   P("M4 2 L4 16"); P("M4 5 L1 7 M4 9 L1 11 M4 13 L1 15"); P("M4 9 L19 9",{"stroke-width":2}); break;
+    case "tmpl:portal": P("M4 16 L4 5 L18 5 L18 16",{"stroke-width":2}); P("M2 16 L6 16 M16 16 L20 16"); break;
   }
   return s;
 }
@@ -360,16 +424,18 @@ function iconFor(name){
       continue;
     }
     const b = document.createElement("button");
+    const label = document.createElement("span"); label.className = "plabel"; label.textContent = t[1];
     if (t[0].startsWith("tmpl:")){
-      b.appendChild(iconFor("beam"));
-      b.appendChild(document.createTextNode(t[1]));
+      b.appendChild(iconFor(t[0]));
+      b.appendChild(label);
       b.title = "Insert a " + t[1] + " template";
       b.onclick = () => addTemplate(t[0].slice(5));
     } else {
       b.dataset.tool = t[0];
       b.appendChild(iconFor(t[0]));
-      b.appendChild(document.createTextNode(t[1]));
-      if (t[2]) b.title = "Shortcut: " + t[2];
+      b.appendChild(label);
+      b.title = t[1] + (t[2] ? " — shortcut: " + t[2] : "");
+      if (t[2]){ const k = document.createElement("span"); k.className = "pkey"; k.textContent = t[2]; b.appendChild(k); }
       b.onclick = () => setTool(t[0]);
     }
     pal.appendChild(b);
@@ -379,7 +445,8 @@ function setTool(t){
   tool = t;
   document.querySelectorAll("#palette button").forEach(b => b.classList.toggle("active", b.dataset.tool === t));
   svg.classList.toggle("tool-select", t === "select");
-  $("hint").textContent = HINTS[t] || "";
+  ghostG.textContent = "";
+  baseHint(HINTS[t] || "");
 }
 setTool("select");
 
@@ -758,6 +825,8 @@ function render(){
                 "stroke-dasharray":`${4/zoom} ${3/zoom}`}, overG);
   }
   updateEquil();
+  if ($("zoomInd")) $("zoomInd").textContent = Math.round(zoom * 100) + "%";
+  const xrb = $("btnXlRefresh"); if (xrb) xrb.disabled = !state.elements.some(e => e.bind);
 }
 function getSel(){
   if (selectedIds.size !== 1) return null;
@@ -1011,7 +1080,7 @@ function solve3(A, b){
 function solveReactions(){
   // build unknowns from the supports: pin = 2 components, roller/spring = 1
   // along its axis, fixed = 2 components + a moment. Exactly 3 -> determinate.
-  const hint = m => { $("hint").textContent = m; };
+  const hint = m => flash(m, 5000);
   const applied = sumLoads(0, 0, true);
   if (!applied.any){ hint("Enter load magnitudes first (engineer-mode fields on forces / moments / UDLs)."); return; }
   const ppu = (state.scale && state.scale.ppu) || 1;
@@ -1093,6 +1162,11 @@ function pushHistory(){
   hIndex = history.length - 1;
   try { localStorage.setItem("fbd-autosave", history[hIndex]); markSaved(true); }
   catch(_){ markSaved(false); }
+  updateUndoUI();
+}
+function updateUndoUI(){
+  if ($("btnUndo")) $("btnUndo").disabled = hIndex <= 0;
+  if ($("btnRedo")) $("btnRedo").disabled = hIndex >= history.length - 1;
 }
 function migrate(st){
   // upgrade legacy udl/tri elements to the unified trapezoidal dist type
@@ -1113,14 +1187,10 @@ function restore(json){
   if (state.forceScale == null) state.forceScale = 6;
   if (state.dimScale == null) state.dimScale = 1;
   syncScaleInputs();
-  if (state.bg){
-    $("bgOpacity").value = $("bgOpacityN").value = Math.round(state.bg.opacity * 100);
-    $("bgScale").value = $("bgScaleN").value = Math.round(state.bg.scale * 100);
-  }
   renderProps(); render();
 }
-function undo(){ if (hIndex > 0){ hIndex--; restore(history[hIndex]); } }
-function redo(){ if (hIndex < history.length - 1){ hIndex++; restore(history[hIndex]); } }
+function undo(){ if (hIndex > 0){ hIndex--; restore(history[hIndex]); updateUndoUI(); } }
+function redo(){ if (hIndex < history.length - 1){ hIndex++; restore(history[hIndex]); updateUndoUI(); } }
 
 /* ---------- properties panel ---------- */
 const PROP_SCHEMAS = {
@@ -1146,10 +1216,56 @@ const ENG_SCHEMAS = {   // extra fields shown only in engineer mode
   moment: [["mag","number","Magnitude"], ["unit","text","Unit"]],
   dist:   [["mag1","number","Intensity end 1"], ["mag2","number","Intensity end 2"], ["unit","text","Unit"]],
 };
+function addBgSlider(body, lab, min, max, val, apply){
+  const f = document.createElement("div"); f.className = "field";
+  const l = document.createElement("label"); l.textContent = lab; f.appendChild(l);
+  const row = document.createElement("div"); row.style.cssText = "display:flex;gap:6px;align-items:center";
+  const r = document.createElement("input"); r.type = "range"; r.min = min; r.max = max; r.value = val; r.style.flex = "1";
+  const n = document.createElement("input"); n.type = "number"; n.min = min; n.max = max; n.value = val; n.style.width = "56px";
+  const go = v => { if (state.bg && isFinite(v)){ apply(+v); render(); } };
+  r.oninput = () => { n.value = r.value; go(r.value); };
+  n.oninput = () => { if (n.value === "") return; r.value = n.value; go(n.value); };
+  r.onchange = n.onchange = pushHistory;
+  row.appendChild(r); row.appendChild(n); f.appendChild(row); body.appendChild(f);
+}
 function renderProps(){
   const body = $("propBody");
   body.textContent = "";
-  if (!selectedIds.size){ body.className = "empty"; body.textContent = "Nothing selected"; return; }
+  if (selectedIds.size) document.body.classList.remove("noprops");   // selecting means editing: reopen a collapsed panel
+  if (!selectedIds.size){
+    // no selection: the panel hosts canvas & background controls instead of dead space
+    body.className = "";
+    const title = document.createElement("div");
+    title.style.cssText = "font-weight:600;margin-bottom:8px";
+    title.textContent = "Canvas";
+    body.appendChild(title);
+    const load = document.createElement("button");
+    load.textContent = state.bg ? "Replace background image…" : "Load background image…";
+    load.style.cssText = "width:100%";
+    load.onclick = () => $("fileImg").click();
+    body.appendChild(load);
+    const note = document.createElement("div");
+    note.style.cssText = "color:var(--chrome-muted);font-size:11px;margin:6px 0 10px";
+    note.textContent = "…or paste / drag-drop an image any time.";
+    body.appendChild(note);
+    if (state.bg){
+      addBgSlider(body, "Background opacity %", 5, 100, Math.round(state.bg.opacity*100), v => { state.bg.opacity = v/100; });
+      addBgSlider(body, "Background scale %", 10, 300, Math.round(state.bg.scale*100), v => { state.bg.scale = v/100; });
+      const mv = document.createElement("button");
+      mv.textContent = "Move background"; mv.style.cssText = "width:100%;margin-bottom:6px";
+      mv.classList.toggle("active", bgMove);
+      mv.onclick = () => {
+        bgMove = !bgMove; mv.classList.toggle("active", bgMove);
+        flash(bgMove ? "Drag on the canvas to reposition the background (Esc to finish)." : "Background move off.", 4000);
+      };
+      body.appendChild(mv);
+      const rm = document.createElement("button");
+      rm.className = "del"; rm.textContent = "Remove background"; rm.style.marginTop = "0";
+      rm.onclick = () => { state.bg = null; bgMove = false; pushHistory(); renderProps(); render(); };
+      body.appendChild(rm);
+    }
+    return;
+  }
   if (selectedIds.size > 1){
     body.className = "";
     const d = document.createElement("div");
@@ -1278,7 +1394,7 @@ function copySelection(){
   const sel = getSelAll(); if (!sel.length) return;
   elemClipboard = JSON.stringify({fbdElements: sel});
   try { navigator.clipboard.writeText(elemClipboard).catch(()=>{}); } catch(_){}
-  $("hint").textContent = "Copied " + sel.length + " element(s) — Ctrl+V to paste (here or in another FBD window).";
+  flash("Copied " + sel.length + " element(s) — Ctrl+V to paste (here or in another FBD window).", 4000);
 }
 function pasteElements(json){
   let obj; try { obj = JSON.parse(json); } catch(_){ return false; }
@@ -1296,7 +1412,7 @@ function pasteElements(json){
   selectedIds = new Set(copies.map(c => c.id));
   setTool("select");
   pushHistory(); renderProps(); render();
-  $("hint").textContent = "Pasted " + copies.length + " element(s).";
+  flash("Pasted " + copies.length + " element(s).");
   return true;
 }
 function viewCenter(){
@@ -1359,7 +1475,7 @@ function addTemplate(kind){
 let drag = null;           // {mode, ...}
 let spaceDown = false;
 
-svg.addEventListener("mousedown", ev => {
+function canvasDown(ev){
   if (ev.button === 1 || (ev.button === 0 && spaceDown)){
     drag = {mode:"pan", sx:ev.clientX, sy:ev.clientY, px:panX, py:panY};
     ev.preventDefault(); return;
@@ -1376,7 +1492,7 @@ svg.addEventListener("mousedown", ev => {
     return;
   }
 
-  if ($("btnBgMove").classList.contains("active") && state.bg){
+  if (bgMove && state.bg){
     drag = {mode:"bg", sx:w.x, sy:w.y, bx:state.bg.x, by:state.bg.y};
     return;
   }
@@ -1421,12 +1537,36 @@ svg.addEventListener("mousedown", ev => {
   if (TWO_POINT.has(e.type)) drag = {mode:"handle", name:"p2", placing:true};
   else { pushHistory(); setTool("select"); }
   renderProps(); render();
+}
+svg.addEventListener("pointerdown", ev => {
+  ghostG.textContent = "";
+  canvasDown(ev);
+  if (drag && !drag.sticky){ try { svg.setPointerCapture(ev.pointerId); } catch(_){} }
 });
 
-svg.addEventListener("mousemove", ev => {
+function updateGhost(w){
+  // faint preview of the active tool's symbol tracking the cursor
+  ghostG.textContent = "";
+  if (tool === "select" || !FACTORIES[tool] || drag) return;
+  const sp = snapPoint(w.x, w.y);
+  const g = el("g", {opacity:0.35, "pointer-events":"none"}, ghostG);
+  if (TWO_POINT.has(tool)){
+    // two-point tools: mark the (snapped) start point
+    el("circle", {cx:sp[0], cy:sp[1], r:3.5/zoom, fill:"#737d62"}, g);
+    el("circle", {cx:sp[0], cy:sp[1], r:9/zoom, fill:"none", stroke:"#737d62", "stroke-width":1/zoom}, g);
+  } else {
+    const keep = counters; counters = Object.assign({}, counters);   // factories mint labels — don't burn numbering on previews
+    const tmp = FACTORIES[tool](sp[0], sp[1]);
+    counters = keep;
+    if (RENDER[tmp.type]) RENDER[tmp.type](tmp, g);
+  }
+}
+svg.addEventListener("pointerleave", () => { ghostG.textContent = ""; });
+
+svg.addEventListener("pointermove", ev => {
   const w = screenToWorld(ev);
   $("coords").textContent = `${Math.round(w.x)}, ${Math.round(w.y)}`;
-  if (!drag) return;
+  if (!drag){ updateGhost(w); return; }
   if (drag.mode === "pan"){
     panX = drag.px + ev.clientX - drag.sx;
     panY = drag.py + ev.clientY - drag.sy;
@@ -1498,7 +1638,7 @@ function cancelDrag(){
   renderProps(); render();
 }
 
-window.addEventListener("mouseup", () => {
+window.addEventListener("pointerup", () => {
   if (!drag || drag.sticky) return;   // sticky placement stays live until the next click
   const d = drag; drag = null;
   if (d.mode === "pan") return;
@@ -1512,7 +1652,7 @@ window.addEventListener("mouseup", () => {
     if (sel && Math.hypot(sel.x2 - sel.x1, sel.y2 - sel.y1) < 5){
       // it was a click, not a drag: switch to click-to-end placement
       drag = {mode:"handle", name:"p2", placing:true, sticky:true};
-      $("hint").textContent = "Move the mouse, then click to set the end point (Esc cancels).";
+      baseHint("Move the mouse, then click to set the end point (Esc cancels).");
       return;
     }
     if (sel && (sel.type === "dist" || sel.type === "dim")){ attachEnd(sel, "1"); attachEnd(sel, "2"); }
@@ -1553,7 +1693,10 @@ window.addEventListener("keydown", ev => {
   if (ev.key === "["){ reorderSel(false); return; }
   if (ev.key === "]"){ reorderSel(true); return; }
   if (ev.key === "Escape"){
+    closeMenus();
+    ghostG.textContent = "";
     if (drag){ cancelDrag(); return; }
+    if (bgMove){ bgMove = false; renderProps(); flash("Background move off."); return; }
     selectedIds = new Set(); setTool("select"); renderProps(); render(); return;
   }
   const all = getSelAll();
@@ -1589,11 +1732,11 @@ function setBgFromBlob(blob){
         c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
         href = c.toDataURL("image/png"); w = c.width; h = c.height;
       }
+      const prevOp = state.bg ? state.bg.opacity : 0.45;   // keep the opacity when replacing
       state.bg = { href, x: 40, y: 40, w, h,
                    scale: Math.min(1, 700 / w),
-                   opacity: $("bgOpacity").value / 100 };
-      $("bgScale").value = $("bgScaleN").value = Math.round(state.bg.scale * 100);
-      pushHistory(); render();
+                   opacity: prevOp };
+      pushHistory(); renderProps(); render();
     };
     img.src = rd.result;
   };
@@ -1614,20 +1757,7 @@ svg.addEventListener("drop", ev => {
   const f = [...ev.dataTransfer.files].find(f => f.type.startsWith("image/"));
   if (f) setBgFromBlob(f);
 });
-$("btnBg").onclick = () => $("fileImg").click();
 $("fileImg").onchange = ev => { if (ev.target.files[0]) setBgFromBlob(ev.target.files[0]); ev.target.value = ""; };
-function bindBgPair(rangeId, numId, key){
-  // slider and number spinner stay in sync; either one drives the bg property
-  const r = $(rangeId), n = $(numId);
-  const apply = v => { if (state.bg && isFinite(v)){ state.bg[key] = v/100; render(); } };
-  r.oninput = () => { n.value = r.value; apply(+r.value); };
-  n.oninput = () => { if (n.value === "") return; r.value = n.value; apply(+n.value); };
-  r.onchange = n.onchange = pushHistory;
-}
-bindBgPair("bgOpacity", "bgOpacityN", "opacity");
-bindBgPair("bgScale", "bgScaleN", "scale");
-$("btnBgMove").onclick = function(){ this.classList.toggle("active"); };
-$("btnBgRemove").onclick = () => { state.bg = null; pushHistory(); render(); };
 
 /* ---------- file ops ---------- */
 let diagName = "";                 // follows the opened file / workbook diagram name
@@ -1714,7 +1844,7 @@ function buildExportSvg(){
   return {out, w:x1-x0, h:y1-y0};
 }
 $("btnSvg").onclick = () => {
-  if (!state.elements.length) { $("hint").textContent = "Nothing to export yet."; return; }
+  if (!state.elements.length) { flash("Nothing to export yet."); return; }
   const {out} = buildExportSvg();
   download(exportName(".svg"), new Blob([new XMLSerializer().serializeToString(out)], {type:"image/svg+xml"}));
 };
@@ -1732,16 +1862,16 @@ function rasterise(scale, cb){
 }
 function expScale(){ return +$("expScale").value || 2; }
 $("btnCopyPng").onclick = () => {
-  if (!state.elements.length) { $("hint").textContent = "Nothing to export yet."; return; }
+  if (!state.elements.length) { flash("Nothing to export yet."); return; }
   rasterise(expScale(), async b => {
     try {
       await navigator.clipboard.write([new ClipboardItem({"image/png": b})]);
-      $("hint").textContent = "Diagram copied to clipboard — paste into Word, email, etc.";
-    } catch(err){ $("hint").textContent = "Clipboard blocked here — use Export PNG instead."; }
+      flash("Diagram copied to clipboard — paste into Word, email, etc.", 4000);
+    } catch(err){ flash("Clipboard blocked here — use Export PNG instead.", 4000); }
   });
 };
 $("btnPng").onclick = () => {
-  if (!state.elements.length) { $("hint").textContent = "Nothing to export yet."; return; }
+  if (!state.elements.length) { flash("Nothing to export yet."); return; }
   rasterise(expScale(), b => download(exportName(".png"), b));
 };
 
@@ -1763,6 +1893,27 @@ $("forceScale").onchange = pushHistory;
 $("chkToScale").onchange = e => { toScale = e.target.checked; try { localStorage.setItem("fbd-toscale", toScale?"1":"0"); } catch(_){}; render(); };
 $("dimScale").oninput = e => { state.dimScale = parseFloat(e.target.value) || 1; render(); };
 $("dimScale").onchange = pushHistory;
+function closeMenus(except){
+  document.querySelectorAll(".menu").forEach(m => { if (m !== except) m.hidden = true; });
+}
+function setupMenu(btnId, menuId){
+  const btn = $(btnId), menu = $(menuId);
+  btn.onclick = ev => { ev.stopPropagation(); closeMenus(menu); menu.hidden = !menu.hidden; };
+  menu.addEventListener("click", ev => {
+    ev.stopPropagation();
+    if (ev.target.tagName === "BUTTON") menu.hidden = true;   // actions close it; checkboxes/select keep it open
+  });
+}
+setupMenu("btnFileMenu", "fileMenu");
+setupMenu("btnExpMenu", "expMenu");
+document.addEventListener("click", () => closeMenus());
+$("zoomInd").onclick = () => {
+  const w = svg.clientWidth || 700, h = svg.clientHeight || 400;
+  const cx = (-panX + w/2)/zoom, cy = (-panY + h/2)/zoom;   // keep the view centre put
+  zoom = 1; panX = w/2 - cx; panY = h/2 - cy; render();
+};
+$("btnPropsHide").onclick = () => { document.body.classList.add("noprops"); render(); };
+$("btnPropsShow").onclick = () => { document.body.classList.remove("noprops"); render(); };
 $("btnUndo").onclick = undo;
 $("btnRedo").onclick = redo;
 $("btnFit").onclick = fitView;
@@ -1802,7 +1953,8 @@ window.addEventListener("resize", render);
   document.body.classList.toggle("eng", engineerMode);
   syncScaleInputs();
   rebuildCounters();
-  pushHistory(); render(); fitView();
+  if ((window.innerWidth || 9999) < 560) document.body.classList.add("noprops");   // narrow pane: canvas first
+  pushHistory(); renderProps(); render(); fitView();
 })();
 </script>
 
@@ -1811,7 +1963,7 @@ window.addEventListener("resize", render);
 /* ---- Excel (Office.js) integration ---- */
 (function(){
   const grp = document.getElementById("excelGroup");
-  function setStatus(m){ const h = document.getElementById("hint"); if (h) h.textContent = m; }
+  function setStatus(m){ if (typeof flash === "function") flash(m, 4500); }
   const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
   const escA = s => String(s).replace(/"/g, '&quot;');
   if (typeof Office === "undefined" || !Office.onReady) return;

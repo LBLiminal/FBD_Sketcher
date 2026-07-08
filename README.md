@@ -53,6 +53,26 @@ A **FBD Sketcher** button appears on the Home ribbon — click it to open the pa
 
 The status line at the bottom of the panel confirms each action (and shows any error).
 
+### New in v1.3 — narrow-pane UI
+
+- The header collapses to **File ▾ / Export ▾ menus** plus the everyday controls,
+  so it fits a normal task-pane width in one or two rows instead of eight.
+- **Background controls moved** to the properties panel (shown when nothing is
+  selected, as a "Canvas" section) — they only appear when relevant.
+- The **properties panel is collapsible** (» in its header, « tab to reopen);
+  it reopens automatically when you select an element, and starts collapsed on
+  very narrow panes. The **palette goes icon-only** below ~560 px.
+- A **ghost preview** of the active tool follows the cursor (with snapping) so
+  you can see exactly where a symbol will land before clicking.
+- Status line now separates **instructions from feedback** — action messages
+  ("Copied", "Inserted…") flash briefly, then the tool hint returns.
+- Papercuts: engineer-mode header group now actually hides when engineer mode
+  is off (CSS specificity bug), undo/redo grey out when unavailable, footer
+  **zoom % indicator** (click to reset to 100%), distinct template icons,
+  danger-red Clear button, Refresh greys out with no linked cells, shortcut
+  letters shown in the palette, and the canvas now uses **pointer events** so
+  pen/touch input works.
+
 ### New in v1.2
 
 - **Attachments** — loads and supports placed on a beam stick to it and follow
