@@ -244,6 +244,7 @@
   <table>
     <tr><td>V B F M U T</td><td>select · beam · force · moment · UDL · text</td></tr>
     <tr><td>P R X S</td><td>pin · roller · fixed · spring</td></tr>
+    <tr><td>O C</td><td>box · circle (sketch shapes)</td></tr>
     <tr><td>Ctrl+V</td><td>paste image (background) or copied elements</td></tr>
     <tr><td>Ctrl+C</td><td>copy selected element(s)</td></tr>
     <tr><td>Ctrl+Z / Ctrl+Y</td><td>undo / redo (Ctrl+Shift+Z also redoes)</td></tr>
@@ -362,13 +363,22 @@ const FACTORIES = {
   spring:(x,y) => ({type:"spring", x, y, angle:0, s:44, coils:4, color:"#222222"}),
   dim:   (x,y) => ({type:"dim", x1:x, y1:y, x2:x, y2:y, off:30, scale:1, label:"", color:"#444444"}),
   text:  (x,y) => ({type:"text", x, y, text:"label", size:16, color:"#222222"}),
+  rect:    (x,y) => ({type:"rect", x1:x, y1:y, x2:x, y2:y, w:2, angle:0, fill:false, color:"#222222"}),
+  ellipse: (x,y) => ({type:"ellipse", x, y, rx:40, ry:40, w:2, angle:0, fill:false, color:"#222222"}),
 };
-const TWO_POINT = new Set(["beam","dist","dim"]);
+const TWO_POINT = new Set(["beam","dist","dim","rect"]);
+function rotPt(x, y, cx, cy, deg){
+  // screen-space rotation about (cx,cy); positive deg = clockwise (SVG rotate convention)
+  const a = rad(deg), s = Math.sin(a), c = Math.cos(a);
+  return [cx + (x-cx)*c - (y-cy)*s, cy + (x-cx)*s + (y-cy)*c];
+}
 
 /* ---------- palette ---------- */
 const TOOLS = [
   ["sect","Tools"],
   ["select","Select","V"], ["beam","Beam","B"], ["node","Node",""],
+  ["sect","Sketch"],
+  ["rect","Box","O"], ["ellipse","Circle","C"],
   ["sect","Loads"],
   ["force","Force","F"], ["moment","Moment","M"], ["dist","UDL","U"],
   ["sect","Supports"],
@@ -389,6 +399,8 @@ const HINTS = {
   spring:"Click to place a spring support (rotate / coils in properties).",
   dim:"Drag — or click, move, click — between the two points to dimension.",
   text:"Click to place text; edit it in the properties panel.",
+  rect:"Drag — or click, move, click — to draw a box (rotate / fill it in properties). Drawn behind loads.",
+  ellipse:"Click to place a circle; drag the handles to stretch it into an ellipse (cylinder ends). Drawn behind loads.",
 };
 function iconFor(name){
   // tiny 22x18 icons drawn with the same primitives as the canvas symbols
@@ -410,6 +422,8 @@ function iconFor(name){
     case "spring": P("M11 2 L11 4 L7 5 L15 7 L7 9 L15 11 L11 12 L11 14"); P("M5 16 L17 16"); break;
     case "dim":    P("M3 9 L19 9"); P("M3 5 L3 13 M19 5 L19 13"); P("M3 9 L7 7 M3 9 L7 11 M19 9 L15 7 M19 9 L15 11"); break;
     case "text":   el("text",{x:11,y:14,fill:"currentColor","font-size":14,"text-anchor":"middle","font-family":"serif","font-style":"italic",stroke:"none"},g).textContent="T"; break;
+    case "rect":   P("M4 4 L18 4 L18 14 L4 14 Z"); break;
+    case "ellipse": el("circle",{cx:11,cy:9,r:6.5},g); break;
     case "tmpl:ssb":    P("M3 6 L19 6",{"stroke-width":2}); P("M5 6 L3 11 L7 11 Z"); P("M17 6 L15 11 L19 11 Z"); P("M2 13 L8 13 M14 13 L20 13"); break;
     case "tmpl:cant":   P("M4 2 L4 16"); P("M4 5 L1 7 M4 9 L1 11 M4 13 L1 15"); P("M4 9 L19 9",{"stroke-width":2}); break;
     case "tmpl:portal": P("M4 16 L4 5 L18 5 L18 16",{"stroke-width":2}); P("M2 16 L6 16 M16 16 L20 16"); break;
@@ -620,6 +634,19 @@ const RENDER = {
     el("text", {x:e.x, y:e.y, fill:e.color, "font-size":e.size, "font-family":"Georgia,serif",
                 "font-style":"italic"}, g).textContent = e.text;
   },
+  rect(e, g){
+    const cx = (e.x1+e.x2)/2, cy = (e.y1+e.y2)/2;
+    const gg = e.angle ? el("g", {transform:`rotate(${-e.angle} ${cx} ${cy})`}, g) : g;
+    el("rect", {x:Math.min(e.x1,e.x2), y:Math.min(e.y1,e.y2),
+                width:Math.abs(e.x2-e.x1), height:Math.abs(e.y2-e.y1),
+                fill: e.fill ? "#ffffff" : "none", stroke:e.color, "stroke-width":e.w,
+                "stroke-linejoin":"round"}, gg);
+  },
+  ellipse(e, g){
+    const gg = e.angle ? el("g", {transform:`rotate(${-e.angle} ${e.x} ${e.y})`}, g) : g;
+    el("ellipse", {cx:e.x, cy:e.y, rx:e.rx, ry:e.ry,
+                   fill: e.fill ? "#ffffff" : "none", stroke:e.color, "stroke-width":e.w}, gg);
+  },
 };
 function distLoad(e, g){
   // Trapezoidal distributed load: linear ramp from End-1 height (h1) to End-2 (h2).
@@ -692,6 +719,23 @@ function hitShape(e, g){
     case "text":
       el("rect", {x:e.x-6, y:e.y-e.size, width:Math.max(50, e.text.length*e.size*0.55)+12,
                   height:e.size*1.4, fill:"rgba(0,0,0,0)", "pointer-events":"fill"}, g); break;
+    case "rect": {
+      // outline-only hit when unfilled, so elements inside the box stay clickable
+      const cx = (e.x1+e.x2)/2, cy = (e.y1+e.y2)/2;
+      const gg = e.angle ? el("g", {transform:`rotate(${-e.angle} ${cx} ${cy})`}, g) : g;
+      el("rect", {x:Math.min(e.x1,e.x2), y:Math.min(e.y1,e.y2),
+                  width:Math.abs(e.x2-e.x1), height:Math.abs(e.y2-e.y1),
+                  fill:"rgba(0,0,0,0)", stroke:"rgba(0,0,0,0)", "stroke-width":14,
+                  "pointer-events": e.fill ? "all" : "stroke"}, gg);
+      break;
+    }
+    case "ellipse": {
+      const gg = e.angle ? el("g", {transform:`rotate(${-e.angle} ${e.x} ${e.y})`}, g) : g;
+      el("ellipse", {cx:e.x, cy:e.y, rx:e.rx, ry:e.ry,
+                     fill:"rgba(0,0,0,0)", stroke:"rgba(0,0,0,0)", "stroke-width":14,
+                     "pointer-events": e.fill ? "all" : "stroke"}, gg);
+      break;
+    }
   }
 }
 function handlePoints(e){
@@ -720,14 +764,34 @@ function geomHandles(e){
                     : [["vec", e.x-ux*len, e.y-uy*len]];
     }
     case "moment": return [["rad", e.x+e.r*0.7071, e.y-e.r*0.7071]];
+    case "rect": {
+      if (!e.angle) return [["p1",e.x1,e.y1], ["p2",e.x2,e.y2]];
+      const cx = (e.x1+e.x2)/2, cy = (e.y1+e.y2)/2;
+      const a = rotPt(e.x1, e.y1, cx, cy, -e.angle), b = rotPt(e.x2, e.y2, cx, cy, -e.angle);
+      return [["p1",a[0],a[1]], ["p2",b[0],b[1]]];
+    }
+    case "ellipse": {
+      const a = rotPt(e.x+e.rx, e.y, e.x, e.y, -(e.angle||0));
+      const b = rotPt(e.x, e.y-e.ry, e.x, e.y, -(e.angle||0));
+      return [["rx",a[0],a[1]], ["ry",b[0],b[1]]];
+    }
     default: return [];
   }
 }
 function applyHandle(e, name, wx, wy){
-  if (name === "p1"){ const p = snapPoint(wx, wy, e.id); e.x1 = p[0]; e.y1 = p[1];
-                      if (e.type === "dist" || e.type === "dim") attachEnd(e, "1"); }
-  else if (name === "p2"){ const p = snapPoint(wx, wy, e.id); e.x2 = p[0]; e.y2 = p[1];
-                           if (e.type === "dist" || e.type === "dim") attachEnd(e, "2"); }
+  if (name === "p1" || name === "p2"){
+    const k = name.slice(1);
+    if (e.type === "rect" && e.angle){
+      // un-rotate the pointer about the box centre, then edit the raw corner
+      const cx = (e.x1+e.x2)/2, cy = (e.y1+e.y2)/2;
+      const p = rotPt(wx, wy, cx, cy, e.angle);
+      e["x"+k] = snap(p[0]); e["y"+k] = snap(p[1]);
+    } else {
+      const p = snapPoint(wx, wy, e.id);
+      e["x"+k] = p[0]; e["y"+k] = p[1];
+      if (e.type === "dist" || e.type === "dim") attachEnd(e, k);
+    }
+  }
   else if (name === "mid"){
     const mx=(e.x1+e.x2)/2, my=(e.y1+e.y2)/2, dx=e.x2-e.x1, dy=e.y2-e.y1, L=Math.hypot(dx,dy)||1;
     const nx=-dy/L, ny=dx/L;
@@ -746,6 +810,11 @@ function applyHandle(e, name, wx, wy){
   }
   else if (name === "rad"){
     e.r = Math.max(10, Math.round(Math.hypot(wx - e.x, wy - e.y)));
+  }
+  else if (name === "rx" || name === "ry"){
+    const p = e.angle ? rotPt(wx, wy, e.x, e.y, e.angle) : [wx, wy];
+    if (name === "rx") e.rx = Math.max(4, Math.round(Math.abs(p[0] - e.x)));
+    else               e.ry = Math.max(4, Math.round(Math.abs(p[1] - e.y)));
   }
   else if (name === "lab"){
     const a = labelAnchor(e);
@@ -1210,6 +1279,10 @@ const PROP_SCHEMAS = {
           ["color","color","Colour"]],
   dim:   [["label","text","Label (blank = measured length)"], ["off","number","Offset"], ["scale","number","Scale"], ["color","color","Colour"]],
   text:  [["text","text","Text"], ["size","number","Size"], ["color","color","Colour"]],
+  rect:    [["w","number","Line weight"], ["angle","number","Angle °"],
+            ["fill","checkbox","Fill white (hide what's behind)"], ["color","color","Colour"]],
+  ellipse: [["rx","number","Radius x"], ["ry","number","Radius y"], ["w","number","Line weight"],
+            ["angle","number","Angle °"], ["fill","checkbox","Fill white (hide what's behind)"], ["color","color","Colour"]],
 };
 const ENG_SCHEMAS = {   // extra fields shown only in engineer mode
   force:  [["mag","number","Magnitude"], ["unit","text","Unit"]],
@@ -1292,7 +1365,7 @@ function renderProps(){
   body.className = "";
   const title = document.createElement("div");
   title.style.cssText = "font-weight:600;margin-bottom:8px;text-transform:capitalize";
-  title.textContent = sel.type === "dist" ? "Distributed load" : sel.type;
+  title.textContent = {dist:"Distributed load", rect:"Box", ellipse:"Circle / ellipse"}[sel.type] || sel.type;
   body.appendChild(title);
   const addField = ([key, kind, lab]) => {
     const f = document.createElement("div"); f.className = "field";
@@ -1532,7 +1605,8 @@ function canvasDown(ev){
   const e = make(sp[0], sp[1]);
   e.id = uid();
   attachPoint(e);                       // loads & supports stick to a nearby beam
-  state.elements.push(e);
+  if (e.type === "rect" || e.type === "ellipse") state.elements.unshift(e);   // body outlines sit behind loads
+  else state.elements.push(e);
   selectedIds = new Set([e.id]);
   if (TWO_POINT.has(e.type)) drag = {mode:"handle", name:"p2", placing:true};
   else { pushHistory(); setTool("select"); }
@@ -1686,7 +1760,7 @@ window.addEventListener("keydown", ev => {
     return; // let Ctrl+V paste fire the paste event (background image / elements)
   }
   const keys = {v:"select", b:"beam", f:"force", m:"moment", u:"dist", t:"text",
-                p:"pin", r:"roller", x:"fixed", s:"spring"};
+                p:"pin", r:"roller", x:"fixed", s:"spring", o:"rect", c:"ellipse"};
   if (keys[ev.key.toLowerCase()] && !ev.altKey){ setTool(keys[ev.key.toLowerCase()]); return; }
   if (ev.key === "Delete" || ev.key === "Backspace"){ deleteSelected(); return; }
   if (ev.key === "0"){ fitView(); return; }

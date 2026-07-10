@@ -53,6 +53,18 @@ A **FBD Sketcher** button appears on the Home ribbon — click it to open the pa
 
 The status line at the bottom of the panel confirms each action (and shows any error).
 
+### New in v1.4 — sketch shapes
+
+- A **Sketch** section in the palette adds **Box** (`O`) and **Circle** (`C`) for
+  drawing the free body itself — a block, cube face, cylinder, pulley, etc.
+- Boxes drag out corner-to-corner and can be **rotated** (Angle in properties —
+  handy for blocks on inclines). Circles place on click and stretch into
+  **ellipses** via separate x/y radius handles (cylinder ends).
+- Both have a **line weight**, an optional **white fill** (to mask whatever is
+  behind the body), and insert *behind* existing elements so they never cover
+  your loads. They're purely graphical — the equilibrium check and reaction
+  solver ignore them.
+
 ### New in v1.3 — narrow-pane UI
 
 - The header collapses to **File ▾ / Export ▾ menus** plus the everyday controls,
